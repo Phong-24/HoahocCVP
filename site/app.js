@@ -517,9 +517,9 @@
       var v = el("div", "vids");
       v.appendChild(el("b", null, "Video đính kèm (" + d.vids.length + ")"));
       var ul = el("ul");
-      d.vids.forEach(function (t) {
+      d.vids.forEach(function (t, vi) {
         var li = el("li");
-        if (unlocked) { var a = el("button", "linkbtn", "▶ " + t); a.type = "button"; a.addEventListener("click", function () { playVideo(d, t); }); li.appendChild(a); }
+        if (unlocked) { var a = el("button", "linkbtn", "▶ " + t); a.type = "button"; a.addEventListener("click", function () { playVideo(d, t, vi); }); li.appendChild(a); }
         else { li.className = "locked"; li.appendChild(el("span", null, "🔒 " + t)); }
         ul.appendChild(li);
       });
@@ -530,14 +530,18 @@
     c.insertBefore(x, c.querySelector(".act"));
     return c;
   }
-  function playVideo(d, t) {
+  function playVideo(d, t, vi) {
+    if (LIVE && d.vidIds) { liveVideo("shop_video", d.vidIds[vi], d.title, t); return; }
+    if (LIVE && d.lessonFileId) { liveVideo("lesson_file", d.lessonFileId, d.title, t); return; }
     openModal(function (box) {
       head(box, d.title, t);
       box.appendChild(el("div", "fakead", "Trình phát video (Bunny Stream). Link có mã khóa, tự hết hạn sau vài giờ và chỉ mở được bằng tài khoản đã mua."));
       row(box, [button("", "Đóng", closeModal)]);
     });
   }
-  function openFile(d) { toast("Bản thật sẽ mở file PDF: " + d.title + (logged() ? " (đóng dấu: " + st.nick + ")" : "")); }
+  function openFile(d, mode) {
+    if (LIVE && d.dbId) { liveFile(String(d.id).charAt(0) === "f" ? "free_doc" : "shop_doc", d.dbId, mode || "download", d.title); return; }
+    toast("Bản thật sẽ mở file PDF: " + d.title + (logged() ? " (đóng dấu: " + st.nick + ")" : "")); }
 
   var docCat = "Tất cả", shopCat = "Tất cả";
   function catChips(id, cats, pool, cur, set) {
@@ -556,7 +560,7 @@
       if (d.acc === "open") { lk = "Đọc tự do"; cls = "free"; }
       else if (noAds()) { lk = "Mở thẳng (" + ROLES[st.role] + ")"; cls = "vip"; }
       else { lk = st.opened[d.id] ? "Đã mở" : "Mở bằng 1 quảng cáo"; cls = "ad"; }
-      if (open) btn = button("sm", "Mở tài liệu", function () { openFile(d); });
+      if (open) btn = button("sm", "Mở tài liệu", function () { openFile(d, "view"); });
       else btn = button("amber sm", "Xem quảng cáo để mở", function () { showAd(d.title, function () { st.opened[d.id] = true; save(); renderDocs(); toast("Đã mở: " + d.title); }); });
       box.appendChild(docCard(d, lk, cls, d.pages + " trang · PDF", btn));
     });
@@ -583,14 +587,14 @@
       var acc = access(d), btn, lk, cls = "paid", meta = d.pages + " trang · xem online hoặc tải PDF đóng dấu tên người mua";
       if (st.role === "student" && STUDENT_FREE.indexOf(d.cat) >= 0) {
         btn = el("span"); btn.style.cssText = "display:flex;gap:6px;flex-wrap:wrap";
-        btn.appendChild(button("sm", "Xem online", function () { toast("Bản thật mở trình xem PDF trên trang: " + d.title); }));
+        btn.appendChild(button("sm", "Xem online", function () { if (LIVE) { openFile(d, "view"); return; } toast("Bản thật mở trình xem PDF trên trang: " + d.title); }));
         btn.appendChild(button("ghost sm", "Tải PDF", function () { download(d); }));
         box.appendChild(shopExtra(docCard(d, "Mở bằng gói Học viên", "vip", meta, btn), d, true)); return;
       }
       if (acc === "active") {
         lk = "Đã mở · đến " + vnDate(expiry(d)); cls = "free";
         btn = el("span"); btn.style.cssText = "display:flex;gap:6px;flex-wrap:wrap";
-        btn.appendChild(button("sm", "Xem online", function () { toast("Bản thật mở trình xem PDF trên trang: " + d.title); }));
+        btn.appendChild(button("sm", "Xem online", function () { if (LIVE) { openFile(d, "view"); return; } toast("Bản thật mở trình xem PDF trên trang: " + d.title); }));
         btn.appendChild(button("ghost sm", "Tải PDF", function () { download(d); }));
         var sim = el("button", "linkbtn", "Thử: tua đến lúc hết hạn"); sim.type = "button";
         sim.addEventListener("click", function () { st.bought[d.id] = new Date(Date.now() - DAY).toISOString(); save(); renderShop(); });
@@ -701,8 +705,8 @@
       top.appendChild(el("span", "note", l.docs.length + " tài liệu · " + l.vids.length + " video")); c.appendChild(top);
       c.appendChild(el("h3", null, l.t));
       var ul = el("ul", "res");
-      l.docs.forEach(function (d) { var li = el("li"); if (open) { var b = el("button", "linkbtn", "📄 " + d); b.type = "button"; b.addEventListener("click", function () { toast("Bản thật mở/tải PDF đóng dấu tên: " + d); }); li.appendChild(b); } else { li.className = "locked"; li.textContent = "🔒 " + d; } ul.appendChild(li); });
-      l.vids.forEach(function (v) { var li = el("li"); if (open) { var b = el("button", "linkbtn", "▶ " + v); b.type = "button"; b.addEventListener("click", function () { playVideo({ title: C.name + " · Buổi " + l.n }, v); }); li.appendChild(b); } else { li.className = "locked"; li.textContent = "🔒 " + v; } ul.appendChild(li); });
+      l.docs.forEach(function (d, di) { var li = el("li"); if (open) { var b = el("button", "linkbtn", "📄 " + d); b.type = "button"; b.addEventListener("click", function () { if (LIVE && l.docIds) { liveFile("lesson_file", l.docIds[di], "view", d); return; } toast("Bản thật mở/tải PDF đóng dấu tên: " + d); }); li.appendChild(b); } else { li.className = "locked"; li.textContent = "🔒 " + d; } ul.appendChild(li); });
+      l.vids.forEach(function (v, vi) { var li = el("li"); if (open) { var b = el("button", "linkbtn", "▶ " + v); b.type = "button"; b.addEventListener("click", function () { playVideo({ title: C.name + " · Buổi " + l.n, lessonFileId: l.vidIds && l.vidIds[vi] }, v); }); li.appendChild(b); } else { li.className = "locked"; li.textContent = "🔒 " + v; } ul.appendChild(li); });
       c.appendChild(ul);
       if (!open && st.role === "student" && st.access) {
         c.appendChild(el("p", "note", "Buổi học trước khi bạn vào khóa."));
@@ -733,7 +737,7 @@
   function renderAdmin() {
     var box = $("adminBox"); box.innerHTML = "";
     if (st.role !== "teacher") { box.appendChild(el("p", "card note", LIVE ? "Trang này chỉ dành cho thầy." : "Trang này chỉ dành cho thầy. Trong bản mẫu, chọn vai trò \"Thầy\" ở cuối trang để xem.")); return; }
-    if (LIVE) { renderAdminLive(box); renderShopAdmin(box); renderPayments(box); renderModeration(box); return; }
+    if (LIVE) { renderAdminLive(box); renderContentAdmin(box); renderPayments(box); renderModeration(box); return; }
     var L = accounts(), nextLesson = COURSE.lessons.length + 1;
     var g = el("div", "grid2"); g.style.alignItems = "start";
     /* cấp quyền */
@@ -964,11 +968,12 @@
     return sb.from("courses").select("id,name,description,meta").eq("active", true).order("id", { ascending: false }).limit(1).then(function (r) {
       if (r.error || !r.data || !r.data.length) return;
       var c = r.data[0];
-      return sb.from("lessons").select("id,n,title,held_on,lesson_files(kind,title,position)").eq("course_id", c.id).order("n").then(function (l) {
+      return sb.from("lessons").select("id,n,title,held_on,lesson_files(id,kind,title,position)").eq("course_id", c.id).order("n").then(function (l) {
         if (l.error) return;
         var ls = (l.data || []).map(function (x) {
           var f = (x.lesson_files || []).slice().sort(function (p, q) { return p.position - q.position; });
-          return { id: x.id, n: x.n, d: x.held_on ? vnDate(x.held_on) : "", t: x.title, docs: f.filter(function (z) { return z.kind === "pdf"; }).map(function (z) { return z.title; }), vids: f.filter(function (z) { return z.kind === "video"; }).map(function (z) { return z.title; }) };
+          var fp = f.filter(function (z) { return z.kind === "pdf"; }), fv = f.filter(function (z) { return z.kind === "video"; });
+          return { id: x.id, n: x.n, d: x.held_on ? vnDate(x.held_on) : "", t: x.title, docs: fp.map(function (z) { return z.title; }), docIds: fp.map(function (z) { return z.id; }), vids: fv.map(function (z) { return z.title; }), vidIds: fv.map(function (z) { return z.id; }) };
         });
         if (ls.length) ls[ls.length - 1].isNew = true;
         COURSE = { id: c.id, name: c.name, desc: c.description || "", meta: c.meta || [], lessons: ls };
@@ -1181,6 +1186,42 @@
     });
   }
 
+  /* ---- File PDF và video thật ---- */
+  function authToken() { return sb.auth.getSession().then(function (s) { return s.data.session ? s.data.session.access_token : ""; }); }
+  function liveFile(type, id, mode, title) {
+    if (type !== "free_doc" && !logged()) { showLogin("Đăng nhập để mở tài liệu"); return; }
+    var win = mode === "view" ? window.open("", "_blank") : null;
+    if (win) win.document.write("<p style='font:16px system-ui;padding:20px'>Đang mở tài liệu…</p>");
+    toast("Đang tải tài liệu…");
+    authToken().then(function (tok) {
+      return fetch("/api/file?type=" + type + "&id=" + id + "&mode=" + (mode === "view" ? "view" : "download"), { headers: tok ? { Authorization: "Bearer " + tok } : {} });
+    }).then(function (r) {
+      if (!r.ok) return r.json().catch(function () { return {}; }).then(function (j) { throw new Error(j.error || ("Lỗi " + r.status)); });
+      return r.blob();
+    }).then(function (b) {
+      var url = URL.createObjectURL(new Blob([b], { type: "application/pdf" }));
+      if (win) { win.location.href = url; }
+      else { var a = document.createElement("a"); a.href = url; a.download = (title || "tai-lieu").replace(/[\\/:*?"<>|]+/g, " ").trim() + ".pdf"; document.body.appendChild(a); a.click(); a.remove(); }
+      setTimeout(function () { URL.revokeObjectURL(url); }, 120000);
+    }).catch(function (e) { if (win) win.close(); toast(e.message); });
+  }
+  function liveVideo(type, id, title, t) {
+    if (!id) { toast("Video chưa được gắn."); return; }
+    openModal(function (box) {
+      box.classList.add("wide");
+      head(box, title, t);
+      var holder = el("div", "note", "Đang tải video…"); box.appendChild(holder);
+      row(box, [button("ghost", "Đóng", closeModal)]);
+      authToken().then(function (tok) { return fetch("/api/video?type=" + type + "&id=" + id, { headers: { Authorization: "Bearer " + tok } }); })
+        .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || ("Lỗi " + r.status)); return j; }); })
+        .then(function (j) {
+          var fr = el("iframe", "pv vid"); fr.src = j.url; fr.title = t; fr.setAttribute("allow", "accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture"); fr.allowFullscreen = true;
+          holder.replaceWith(fr);
+          if (st.nick) { var wm = el("p", "note", "Video dành cho tài khoản " + st.nick + (LV.email ? " (" + LV.email + ")" : "") + ". Vui lòng không chia sẻ."); fr.after(wm); }
+        }).catch(function (e) { holder.textContent = e.message; });
+    });
+  }
+
   /* ---- Thanh toán QR thật ---- */
   function bankCfg() { var b = CFG.bank || {}; return b.bin && b.accountNo ? b : null; }
   function livePay(type, itemId, title) {
@@ -1224,19 +1265,146 @@
     });
   }
   function loadShop() {
-    var q = [sb.from("shop_docs").select("id,category,tag,title,pages,price,preview_url").order("id"), sb.from("shop_videos").select("doc_id,title,position").order("position"), sb.from("shop_doc_stats").select("id,downloads")];
+    var q = [sb.from("shop_docs").select("id,category,tag,title,pages,price,preview_url").order("id"), sb.from("shop_videos").select("id,doc_id,title,position").order("position"), sb.from("shop_doc_stats").select("id,downloads")];
     if (LV.prof) q.push(sb.from("doc_access").select("doc_id,expires_at").eq("user_id", LV.prof.id));
     return Promise.all(q).then(function (R) {
       var vids = R[1].data || [], stats = {}; (R[2].data || []).forEach(function (s) { stats[s.id] = s.downloads; });
       SHOP = (R[0].data || []).map(function (d) {
-        var v = vids.filter(function (x) { return x.doc_id === d.id; }).map(function (x) { return x.title; });
-        return { id: "s" + d.id, dbId: d.id, cat: d.category, tag: d.tag || d.category, title: d.title, pages: d.pages, price: d.price, preview: d.preview_url || "", vids: v.length ? v : undefined, dl: stats[d.id] || 0 };
+        var vv = vids.filter(function (x) { return x.doc_id === d.id; }), v = vv.map(function (x) { return x.title; });
+        return { id: "s" + d.id, dbId: d.id, cat: d.category, tag: d.tag || d.category, title: d.title, pages: d.pages, price: d.price, preview: d.preview_url || "", vids: v.length ? v : undefined, vidIds: vv.map(function (x) { return x.id; }), dl: stats[d.id] || 0 };
       });
       st.bought = {}; st.dl = {};
       (R[3] && R[3].data || []).forEach(function (a) { st.bought["s" + a.doc_id] = a.expires_at; });
       if (st.role === "teacher") SHOP.forEach(function (d) { st.bought[d.id] = "2099-12-31T00:00:00Z"; });
     });
   }
+  /* ---- Quản trị: nội dung (tài liệu, video, buổi học) ---- */
+  function uploadPdf(type, id, file, done) {
+    if (!file) return;
+    if (!/pdf$/i.test(file.type) && !/\.pdf$/i.test(file.name)) { toast("Chỉ nhận file PDF"); return; }
+    toast("Đang tải lên " + file.name + "…");
+    authToken().then(function (tok) { return fetch("/api/admin/file?type=" + type + "&id=" + id, { method: "PUT", headers: { Authorization: "Bearer " + tok, "Content-Type": "application/pdf" }, body: file }); })
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || ("Lỗi " + r.status)); return j; }); })
+      .then(function () { toast("Đã tải lên " + file.name); if (done) done(); })
+      .catch(function (e) { toast("Chưa tải lên được: " + e.message); });
+  }
+  function saveBunny(type, id, vid, done) {
+    sb.from("file_secrets").upsert({ owner_type: type, owner_id: id, bunny_video_id: vid.trim() || null }, { onConflict: "owner_type,owner_id" }).then(function (r) { if (r.error) { sbErr(r.error); return; } toast("Đã lưu mã video"); if (done) done(); });
+  }
+  function pdfCell(type, id, has, reload) {
+    var w = el("div", "cact");
+    w.appendChild(el("span", has ? "badge ok" : "badge", has ? "✓ Có PDF" : "Chưa có PDF"));
+    var lb = el("label", "btn ghost sm", has ? "Thay PDF" : "Tải PDF lên"); var fi = el("input"); fi.type = "file"; fi.accept = "application/pdf,.pdf"; fi.hidden = true;
+    fi.addEventListener("change", function () { uploadPdf(type, id, fi.files[0], reload); }); lb.appendChild(fi); w.appendChild(lb);
+    return w;
+  }
+  function vidCell(type, id, cur, reload) {
+    var w = el("div", "cact");
+    var inp = el("input", "inp"); inp.placeholder = "Video ID trên Bunny"; inp.value = cur || ""; inp.style.maxWidth = "260px"; inp.setAttribute("aria-label", "Video ID Bunny");
+    w.appendChild(inp); w.appendChild(button("sm", "Lưu", function () { saveBunny(type, id, inp.value, reload); }));
+    if (cur) w.appendChild(el("span", "badge ok", "✓ Đã gắn"));
+    return w;
+  }
+  function miniForm(fields, submitLabel, onSubmit) {
+    var f = el("form", "mini"); var vals = {};
+    fields.forEach(function (fd) {
+      var node;
+      if (fd.options) { node = el("select", "inp"); fd.options.forEach(function (o) { var arr = Array.isArray(o); var op = el("option", null, arr ? o[1] : o); op.value = arr ? o[0] : o; node.appendChild(op); }); }
+      else { node = el("input", "inp"); node.type = fd.type || "text"; node.placeholder = fd.ph || ""; if (fd.value) node.value = fd.value; }
+      node.setAttribute("aria-label", fd.label); node.title = fd.label; if (fd.w) node.style.maxWidth = fd.w; vals[fd.k] = node; f.appendChild(node);
+    });
+    var b = el("button", "btn sm", submitLabel); b.type = "submit"; f.appendChild(b);
+    f.addEventListener("submit", function (e) { e.preventDefault(); var o = {}; for (var k in vals) o[k] = vals[k].value.trim(); onSubmit(o, f); });
+    return f;
+  }
+  function renderContentAdmin(box) {
+    var wrap = el("div", "card"); wrap.style.cssText = "display:grid;gap:14px"; box.appendChild(wrap);
+    wrap.appendChild(el("h3", null, "Nội dung: tài liệu, video, buổi học")); wrap.lastChild.style.fontSize = "17px";
+    wrap.appendChild(el("p", "note", "PDF lưu trong kho Cloudflare R2. Video tải lên Bunny Stream trước, rồi dán Video ID vào đây. Link xem thử là link Google Drive chỉ cho xem."));
+    var body = el("div"); body.style.cssText = "display:grid;gap:14px"; wrap.appendChild(body);
+    function reload() { renderContentAdmin.reloading = true; body.innerHTML = ""; draw(); }
+    function draw() {
+      Promise.all([
+        sb.from("shop_docs").select("id,category,tag,title,pages,price,preview_url,published").order("id"),
+        sb.from("shop_videos").select("id,doc_id,title,position").order("position"),
+        sb.from("free_docs").select("id,category,tag,title,pages,access,published").order("id"),
+        sb.from("courses").select("id,name").eq("active", true).order("id", { ascending: false }).limit(1),
+        sb.from("file_secrets").select("owner_type,owner_id,storage_key,bunny_video_id")
+      ]).then(function (R) {
+        var sec = {}; (R[4].data || []).forEach(function (x) { sec[x.owner_type + ":" + x.owner_id] = x; });
+        var S = function (t, i) { return sec[t + ":" + i] || {}; };
+        /* Tài liệu bán */
+        var d1 = el("details", "adm"); d1.open = true; d1.appendChild(el("summary", null, "Tài liệu bán (" + (R[0].data || []).length + ")")); body.appendChild(d1);
+        d1.appendChild(miniForm([
+          { k: "category", label: "Mục", options: SHOP_CATS.slice(1) }, { k: "title", label: "Tên tài liệu", ph: "Tên tài liệu" },
+          { k: "tag", label: "Nhãn nhỏ", ph: "Nhãn, ví dụ Bài giảng · Lớp 12", w: "220px" }, { k: "pages", label: "Số trang", ph: "Số trang", type: "number", w: "110px" }, { k: "price", label: "Giá (đồng)", ph: "Giá, ví dụ 59000", type: "number", w: "150px" }
+        ], "Thêm tài liệu bán", function (o) {
+          if (!o.title || !o.price) { toast("Cần tên và giá"); return; }
+          sb.from("shop_docs").insert({ category: o.category, title: o.title, tag: o.tag || null, pages: +o.pages || null, price: +o.price }).then(function (r) { if (r.error) { sbErr(r.error); return; } toast("Đã thêm tài liệu"); reload(); loadShop().then(renderShop); });
+        }));
+        (R[0].data || []).forEach(function (d) {
+          var c = el("div", "admrow" + (d.published ? "" : " off"));
+          var h = el("div", "cact"); h.appendChild(el("b", null, d.title)); h.appendChild(el("span", "note", d.category + " · " + vnd(d.price) + (d.published ? "" : " · đang ẩn")));
+          h.appendChild(button("ghost sm", d.published ? "Ẩn" : "Hiện", function () { sb.from("shop_docs").update({ published: !d.published }).eq("id", d.id).then(function () { reload(); loadShop().then(renderShop); }); }));
+          c.appendChild(h);
+          c.appendChild(pdfCell("shop_doc", d.id, !!S("shop_doc", d.id).storage_key, reload));
+          var pv = el("div", "cact"); var pin = el("input", "inp"); pin.type = "url"; pin.placeholder = "Link xem thử (Google Drive)"; pin.value = d.preview_url || ""; pin.style.maxWidth = "360px"; pin.setAttribute("aria-label", "Link xem thử");
+          pv.appendChild(pin); pv.appendChild(button("sm", "Lưu link xem thử", function () { sb.from("shop_docs").update({ preview_url: pin.value.trim() || null }).eq("id", d.id).then(function (x) { if (x.error) { sbErr(x.error); return; } toast("Đã lưu link xem thử"); loadShop().then(renderShop); }); }));
+          c.appendChild(pv);
+          (R[1].data || []).filter(function (v) { return v.doc_id === d.id; }).forEach(function (v) {
+            var vr = el("div", "cact"); vr.appendChild(el("span", null, "▶ " + v.title)); vr.appendChild(vidCell("shop_video", v.id, S("shop_video", v.id).bunny_video_id, reload)); c.appendChild(vr);
+          });
+          c.appendChild(miniForm([{ k: "t", label: "Tên video mới", ph: "Tên video đính kèm mới", w: "320px" }], "Thêm video", function (o) {
+            if (!o.t) return; var n = (R[1].data || []).filter(function (v) { return v.doc_id === d.id; }).length;
+            sb.from("shop_videos").insert({ doc_id: d.id, title: o.t, position: n }).then(function (r) { if (r.error) { sbErr(r.error); return; } reload(); loadShop().then(renderShop); });
+          }));
+          d1.appendChild(c);
+        });
+        /* Tài liệu miễn phí */
+        var d2 = el("details", "adm"); d2.appendChild(el("summary", null, "Tài liệu miễn phí / xem quảng cáo (" + (R[2].data || []).length + ")")); body.appendChild(d2);
+        d2.appendChild(miniForm([
+          { k: "category", label: "Mục", options: DOC_CATS.slice(1) }, { k: "title", label: "Tên tài liệu", ph: "Tên tài liệu" },
+          { k: "tag", label: "Nhãn nhỏ", ph: "Nhãn", w: "200px" }, { k: "pages", label: "Số trang", ph: "Số trang", type: "number", w: "110px" },
+          { k: "access", label: "Cách mở", options: [["open", "Đọc tự do"], ["ad", "Xem quảng cáo"]], w: "170px" }
+        ], "Thêm tài liệu", function (o) {
+          if (!o.title) { toast("Cần tên tài liệu"); return; }
+          sb.from("free_docs").insert({ category: o.category, title: o.title, tag: o.tag || null, pages: +o.pages || null, access: o.access }).then(function (r) { if (r.error) { sbErr(r.error); return; } toast("Đã thêm tài liệu"); reload(); loadDocs().then(renderDocs); });
+        }));
+        (R[2].data || []).forEach(function (d) {
+          var c = el("div", "admrow" + (d.published ? "" : " off"));
+          var h = el("div", "cact"); h.appendChild(el("b", null, d.title)); h.appendChild(el("span", "note", d.category + " · " + (d.access === "ad" ? "xem quảng cáo" : "đọc tự do") + (d.published ? "" : " · đang ẩn")));
+          h.appendChild(button("ghost sm", d.published ? "Ẩn" : "Hiện", function () { sb.from("free_docs").update({ published: !d.published }).eq("id", d.id).then(function () { reload(); loadDocs().then(renderDocs); }); }));
+          c.appendChild(h); c.appendChild(pdfCell("free_doc", d.id, !!S("free_doc", d.id).storage_key, reload)); d2.appendChild(c);
+        });
+        /* Khóa học hiện hành */
+        var course = (R[3].data || [])[0];
+        var d3 = el("details", "adm"); d3.appendChild(el("summary", null, "Khóa học hiện hành" + (course ? ": " + course.name : ""))); body.appendChild(d3);
+        if (!course) { d3.appendChild(el("p", "note", "Chưa có khóa học.")); return; }
+        sb.from("lessons").select("id,n,title,held_on,lesson_files(id,kind,title,position)").eq("course_id", course.id).order("n").then(function (L) {
+          var ls = L.data || [];
+          d3.appendChild(miniForm([{ k: "title", label: "Tên buổi học", ph: "Tên buổi học mới" }, { k: "date", label: "Ngày học", type: "date", w: "170px" }], "Thêm buổi " + (ls.length + 1), function (o) {
+            if (!o.title) { toast("Cần tên buổi học"); return; }
+            sb.from("lessons").insert({ course_id: course.id, n: ls.length + 1, title: o.title, held_on: o.date || null }).then(function (r) { if (r.error) { sbErr(r.error); return; } toast("Đã thêm buổi học"); reload(); loadCourse().then(renderCourse); });
+          }));
+          ls.slice().reverse().forEach(function (l) {
+            var c = el("div", "admrow"); c.appendChild(el("b", null, "Buổi " + l.n + ": " + l.title + (l.held_on ? " · " + vnDate(l.held_on) : "")));
+            (l.lesson_files || []).sort(function (a, b) { return a.position - b.position; }).forEach(function (f) {
+              var fr = el("div", "cact"); fr.appendChild(el("span", null, (f.kind === "pdf" ? "📄 " : "▶ ") + f.title));
+              fr.appendChild(f.kind === "pdf" ? pdfCell("lesson_file", f.id, !!S("lesson_file", f.id).storage_key, reload) : vidCell("lesson_file", f.id, S("lesson_file", f.id).bunny_video_id, reload));
+              c.appendChild(fr);
+            });
+            c.appendChild(miniForm([{ k: "kind", label: "Loại", options: [["pdf", "Tài liệu PDF"], ["video", "Video"]], w: "160px" }, { k: "t", label: "Tên", ph: "Tên tài liệu hoặc video", w: "300px" }], "Thêm vào buổi " + l.n, function (o) {
+              if (!o.t) return;
+              sb.from("lesson_files").insert({ lesson_id: l.id, kind: o.kind, title: o.t, position: (l.lesson_files || []).length }).then(function (r) { if (r.error) { sbErr(r.error); return; } reload(); loadCourse().then(renderCourse); });
+            }));
+            d3.appendChild(c);
+          });
+        });
+      });
+    }
+    draw();
+  }
+
   function renderShopAdmin(box) {
     var c = el("div", "card tablebox"); c.style.cssText = "display:grid;gap:10px"; box.appendChild(c);
     c.appendChild(el("h3", null, "Tài liệu bán: link xem thử")); c.lastChild.style.fontSize = "17px";
@@ -1273,7 +1441,7 @@
 
   function liveInit() {
     document.querySelectorAll(".demo").forEach(function (x) { x.hidden = true; });
-    var bar = el("div", "livebar", "Trang đang chạy thử: dữ liệu và thanh toán là thật; file PDF và video sẽ có khi thầy tải lên.");
+    var bar = el("div", "livebar", "Trang đang chạy thử: dữ liệu và thanh toán là thật. Tài liệu, video nào thầy chưa tải lên sẽ báo “chưa có file”.");
     document.querySelector("main").prepend(bar);
     try { var o = JSON.parse(localStorage.getItem(LV.pageKey) || "{}"); st.exPage = o.exPage || {}; } catch (e) {}
     Promise.all([loadExercises(), loadComments(), loadCourse(), loadDocs()]).then(function () {

@@ -134,8 +134,36 @@ ngân hàng, số tài khoản, tên chủ tài khoản (viết không dấu nh�
 
 ---
 
+## Bước 8. Kho file PDF (Cloudflare R2) và video (Bunny Stream)
+
+**Phần A – Kho PDF trên Cloudflare R2** (miễn phí đến 10 GB)
+1. Cloudflare → menu trái **Storage & databases** → **R2 Object Storage** → **Overview**. Lần đầu dùng, Cloudflare có thể yêu cầu thêm phương thức thanh toán (không trừ tiền khi dùng trong mức miễn phí).
+2. **Create bucket** → tên `hoahoccvp-files` → Location: **Automatic** → **Create bucket**.
+3. **Workers & Pages** → **hoahoccvp** → **Settings** → **Bindings** → **Add** → **R2 bucket**:
+   - **Variable name:** `FILES`
+   - **R2 bucket:** `hoahoccvp-files` → **Save**.
+
+**Phần B – Thư viện video Bunny Stream**
+4. Đăng ký https://bunny.net → **Stream** → **Add Video Library** → tên `hoahoccvp`, vùng phát chọn có **Asia** → **Add**.
+5. Trong thư viện vừa tạo → **API** (hoặc **Overview**): chép **Video Library ID** (một dãy số).
+6. Mục **Security**:
+   - Bật **Embed view token authentication** → chép **Token authentication key** (giữ bí mật).
+   - **Allowed referrers / domains:** thêm `hoahoccvp.pages.dev`.
+7. Cloudflare → **hoahoccvp** → **Settings** → **Variables and Secrets** → thêm:
+   - `BUNNY_LIBRARY_ID` (Text) = Library ID ở bước 5
+   - `BUNNY_TOKEN_KEY` (**Secret**) = Token authentication key ở bước 6
+   → **Save**, rồi báo Claude để kích hoạt bản triển khai mới.
+
+**Phần C – Đưa nội dung lên** (trang web → **Quản trị** → **Nội dung**)
+8. **PDF:** ở mỗi tài liệu / buổi học bấm **Tải PDF lên**, chọn file. Hiện ✓ là xong.
+9. **Video:** tải video lên Bunny (thư viện `hoahoccvp` → **Upload**), mở video → chép **Video ID** (dạng `eb1c4f77-0cda-…`) → dán vào ô "Video ID trên Bunny" tương ứng → **Lưu**.
+10. Thêm tài liệu bán, tài liệu miễn phí, buổi học, video mới ngay trong trang Quản trị.
+
+**Đóng dấu tên người mua lên PDF (tùy chọn):** cần gói Workers Paid của Cloudflare (5 USD/tháng) vì xử lý PDF tốn thời gian máy. Khi đã nâng gói: thêm biến `WATERMARK` (Text) = `1`.
+
+---
+
 ## Các bước tiếp theo (Claude sẽ gửi hướng dẫn chi tiết khi tới lượt)
 
-7. Tạo kho lưu file PDF (Cloudflare R2) và thư viện video (Bunny Stream).
 9. Mua và gắn tên miền riêng.
 10. Gắn link 3 Google Form đăng ký học, số Zalo, thông tin giới thiệu.
