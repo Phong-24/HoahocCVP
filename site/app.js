@@ -1306,9 +1306,19 @@
   $("btnZalo").addEventListener("click", function () {
     openModal(function (box) {
       head(box, "Liên hệ", "Nhắn Zalo cho thầy");
-      var dl = el("dl", "kv"); dl.appendChild(el("dt", null, "Zalo")); dl.appendChild(el("dd", null, "thầy bổ sung số")); box.appendChild(dl);
-      box.appendChild(el("p", "note", "Trang thật sẽ có nút mở thẳng Zalo và mã QR Zalo của thầy."));
-      row(box, [button("", "Đóng", closeModal)]);
+      var phone = (CFG.zalo || "").replace(/\D/g, "");
+      if (!phone) { box.appendChild(el("p", "note", "Thầy chưa cập nhật số Zalo.")); row(box, [button("", "Đóng", closeModal)]); return; }
+      var link = "https://zalo.me/" + phone;
+      if (window.qrcode) {
+        var q = window.qrcode(0, "M"); q.addData(link); q.make();
+        var img = el("img"); img.src = q.createDataURL(6, 2); img.alt = "Mã QR Zalo của thầy, số " + phone;
+        img.style.cssText = "width:200px;height:200px;margin:0 auto;display:block;border-radius:8px;background:#fff;image-rendering:pixelated";
+        box.appendChild(img);
+        box.appendChild(el("p", "note", "Quét mã bằng ứng dụng Zalo (mục Quét QR) hoặc camera điện thoại.")); box.lastChild.style.textAlign = "center";
+      }
+      var dl = el("dl", "kv"); dl.appendChild(el("dt", null, "Zalo")); dl.appendChild(el("dd", null, phone.replace(/(\d{4})(\d{3})(\d+)/, "$1 $2 $3"))); box.appendChild(dl);
+      var open = el("a", "btn", "Mở Zalo nhắn tin"); open.href = link; open.target = "_blank"; open.rel = "noopener";
+      row(box, [button("ghost", "Đóng", closeModal), open]);
     });
   });
 

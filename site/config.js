@@ -25,6 +25,6 @@ window.HHTP_CONFIG = {
   },
 
   /* Thông tin hiện ở chân trang */
-  zalo: "",
+  zalo: "0373132227",
   bctNotice: ""
 };
