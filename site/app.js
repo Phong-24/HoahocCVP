@@ -486,7 +486,9 @@
     });
   }
   function dlCount(d) { return (d.dl || 0) + ((st.dl || {})[d.id] || 0); }
-  function download(d) { st.dl = st.dl || {}; st.dl[d.id] = (st.dl[d.id] || 0) + 1; save(); openFile(d); renderShop(); }
+  function download(d) {
+    if (LIVE) { sb.rpc("record_download", { p_doc: d.dbId }).then(function (r) { if (r.error) { sbErr(r.error); return; } d.dl = Number(r.data) || d.dl + 1; renderShop(); openFile(d); }); return; }
+    st.dl = st.dl || {}; st.dl[d.id] = (st.dl[d.id] || 0) + 1; save(); openFile(d); renderShop(); }
   function shopExtra(c, d, unlocked) {
     var x = el("div", "dx");
     x.appendChild(el("span", "note", dlCount(d).toLocaleString("vi-VN") + " lượt tải"));
@@ -1211,6 +1213,7 @@
       });
       st.bought = {}; st.dl = {};
       (R[3] && R[3].data || []).forEach(function (a) { st.bought["s" + a.doc_id] = a.expires_at; });
+      if (st.role === "teacher") SHOP.forEach(function (d) { st.bought[d.id] = "2099-12-31T00:00:00Z"; });
     });
   }
   function renderPayments(box) {

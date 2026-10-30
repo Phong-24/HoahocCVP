@@ -439,6 +439,19 @@ begin
   return round(p / 1000) * 1000;
 end $$;
 
+-- Ghi một lượt tải (chỉ khi người dùng có quyền với tài liệu); trả về tổng lượt tải mới
+create or replace function public.record_download(p_doc bigint) returns bigint
+language plpgsql security definer set search_path = public as $$
+declare n bigint;
+begin
+  if auth.uid() is null or doc_status(p_doc) not in ('active', 'student_free') then
+    raise exception 'Bạn chưa có quyền tải tài liệu này';
+  end if;
+  insert into downloads (doc_id, user_id) values (p_doc, auth.uid());
+  select downloads into n from shop_doc_stats where id = p_doc;
+  return n;
+end $$;
+
 -- ---------------------------------------------------------------------
 -- 6. Khóa học hiện hành, buổi học, mã kích hoạt
 -- ---------------------------------------------------------------------
