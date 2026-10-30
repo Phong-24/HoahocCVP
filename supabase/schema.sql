@@ -657,6 +657,21 @@ begin
   return 'ok';
 end $$;
 revoke execute on function public.fulfill_order(text, int, text) from public, anon, authenticated;
+grant execute on function public.fulfill_order(text, int, text) to service_role;
+
+-- Nhật ký tiền vào từ SePay (để thầy đối chiếu)
+create table if not exists public.payment_events (
+  id bigint generated always as identity primary key,
+  sepay_id bigint unique,
+  order_code text,
+  amount int,
+  result text,
+  payload jsonb,
+  created_at timestamptz not null default now()
+);
+alter table payment_events enable row level security;
+drop policy if exists "payment_events: thầy xem" on payment_events;
+create policy "payment_events: thầy xem" on payment_events for select using (is_teacher());
 
 -- Hàm chỉ máy chủ được gọi
 revoke execute on function public.doc_status(bigint, uuid) from anon;

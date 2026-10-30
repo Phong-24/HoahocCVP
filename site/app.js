@@ -115,7 +115,7 @@
   var CFG = window.HHTP_CONFIG || {};
   var LIVE = !!(CFG.supabaseUrl && CFG.supabaseAnonKey && window.supabase);
   var sb = LIVE ? window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey) : null;
-  if (LIVE) { BASIC = []; ADV = []; CM_SEED = {}; TOPICS = []; REVIEWS = []; COURSE = { name: "Khóa học hiện hành", desc: "Đang tải…", meta: [], lessons: [] }; }
+  if (LIVE) { BASIC = []; ADV = []; CM_SEED = {}; TOPICS = []; REVIEWS = []; DOCS = []; SHOP = []; COURSE = { name: "Khóa học hiện hành", desc: "Đang tải…", meta: [], lessons: [] }; }
 
   /* ================= trạng thái ================= */
   var KEY = "hhtp-demo-v3";
@@ -578,6 +578,7 @@
       else lk = vnd(price);
       {
         btn = button(renew ? "amber sm" : "sm", (renew ? "Gia hạn 12 tháng · " : "Mua bằng QR · ") + vnd(price), function () {
+          if (LIVE) { livePay(renew ? "doc_renew" : "doc", d.dbId, (renew ? "Gia hạn: " : "") + d.title); return; }
           var pay = function () { showQR((renew ? "Gia hạn: " : "") + d.title, price, function () { grant(d); renderShop(); toast((renew ? "Đã gia hạn" : "Đã mở tài liệu") + ", dùng đến " + vnDate(expiry(d))); }); };
           if (!logged()) showLogin("Đăng nhập để lưu tài liệu đã mua", pay); else pay();
         });
@@ -593,8 +594,8 @@
 
   /* ================= thành viên ================= */
   function payPlan(title, amount, onPaid, reason) { var go = function () { showQR(title, amount, onPaid); }; if (!logged()) showLogin(reason, go); else go(); }
-  function buyVip(months) { payPlan("Gói VIP " + (months === 12 ? "1 năm" : "1 tháng"), months === 12 ? 1500000 : 150000, function () { st.role = "vip"; save(); renderAll(); toast("Đã kích hoạt VIP " + (months === 12 ? "1 năm" : "1 tháng")); }, "Đăng nhập để kích hoạt VIP"); }
-  function buyStudent() { var renew = !!st.studentExpired; payPlan(renew ? "Gia hạn gói Học viên 12 tháng (giảm 50%)" : "Gói Học viên 12 tháng", renew ? 4000000 : 8000000, function () { st.role = "student"; st.studentExpired = false; save(); renderAll(); toast(renew ? "Đã gia hạn gói Học viên" : "Đã kích hoạt gói Học viên"); }, "Đăng nhập để đăng ký gói Học viên"); }
+  function buyVip(months) { if (LIVE) { livePay(months === 12 ? "vip_year" : "vip_month", null, "Gói VIP " + (months === 12 ? "1 năm" : "1 tháng")); return; } payPlan("Gói VIP " + (months === 12 ? "1 năm" : "1 tháng"), months === 12 ? 1500000 : 150000, function () { st.role = "vip"; save(); renderAll(); toast("Đã kích hoạt VIP " + (months === 12 ? "1 năm" : "1 tháng")); }, "Đăng nhập để kích hoạt VIP"); }
+  function buyStudent() { if (LIVE) { livePay("student", null, st.studentExpired ? "Gia hạn gói Học viên 12 tháng (giảm 50%)" : "Gói Học viên 12 tháng"); return; } var renew = !!st.studentExpired; payPlan(renew ? "Gia hạn gói Học viên 12 tháng (giảm 50%)" : "Gói Học viên 12 tháng", renew ? 4000000 : 8000000, function () { st.role = "student"; st.studentExpired = false; save(); renderAll(); toast(renew ? "Đã gia hạn gói Học viên" : "Đã kích hoạt gói Học viên"); }, "Đăng nhập để đăng ký gói Học viên"); }
   function renderTiers() {
     var box = $("tiers"); box.innerHTML = "";
     var T = [
@@ -682,7 +683,7 @@
       c.appendChild(ul);
       if (!open && st.role === "student" && st.access) {
         c.appendChild(el("p", "note", "Buổi học trước khi bạn vào khóa."));
-        c.appendChild(button("ghost sm", "Mua buổi này · " + vnd(LESSON_PRICE), function () { showQR("Buổi " + l.n + ": " + l.t, LESSON_PRICE, function () { st.lessonBought[l.n] = true; save(); renderCourse(); toast("Đã mở buổi " + l.n); }); }));
+        c.appendChild(button("ghost sm", "Mua buổi này · " + vnd(LESSON_PRICE), function () { if (LIVE) { livePay("lesson", l.id, "Buổi " + l.n + ": " + l.t); return; } showQR("Buổi " + l.n + ": " + l.t, LESSON_PRICE, function () { st.lessonBought[l.n] = true; save(); renderCourse(); toast("Đã mở buổi " + l.n); }); }));
         c.lastChild.style.justifySelf = "start";
       }
       box.appendChild(c);
@@ -709,7 +710,7 @@
   function renderAdmin() {
     var box = $("adminBox"); box.innerHTML = "";
     if (st.role !== "teacher") { box.appendChild(el("p", "card note", LIVE ? "Trang này chỉ dành cho thầy." : "Trang này chỉ dành cho thầy. Trong bản mẫu, chọn vai trò \"Thầy\" ở cuối trang để xem.")); return; }
-    if (LIVE) { renderAdminLive(box); renderModeration(box); return; }
+    if (LIVE) { renderAdminLive(box); renderPayments(box); renderModeration(box); return; }
     var L = accounts(), nextLesson = COURSE.lessons.length + 1;
     var g = el("div", "grid2"); g.style.alignItems = "start";
     /* cấp quyền */
@@ -979,7 +980,7 @@
     for (var k in base) st[k] = base[k];
     st.exPage = keepPage;
     BASIC.concat(ADV, ESSAY).forEach(function (q) { delete q._k; delete q._s; });
-    var p = (u ? loadMine(u.id) : Promise.resolve()).then(function () { return Promise.all([loadForum(), loadReviews()]); });
+    var p = (u ? loadMine(u.id) : Promise.resolve()).then(function () { return Promise.all([loadForum(), loadReviews(), loadShop()]); });
     return p.then(function () { pageNow = {}; renderAll(); if (u && LV.after) { var f = LV.after; LV.after = null; f(); } });
   }
   function liveRedeem(code) {
@@ -1157,12 +1158,85 @@
     });
   }
 
+  /* ---- Thanh toán QR thật ---- */
+  function bankCfg() { var b = CFG.bank || {}; return b.bin && b.accountNo ? b : null; }
+  function livePay(type, itemId, title) {
+    if (!logged()) { showLogin("Đăng nhập để thanh toán", function () { livePay(type, itemId, title); }); return; }
+    var bank = bankCfg();
+    if (!bank) { openModal(function (box) { head(box, "Thanh toán", title); box.appendChild(el("p", null, "Thầy chưa cấu hình tài khoản nhận tiền. Vui lòng nhắn Zalo cho thầy.")); row(box, [button("", "Đóng", closeModal)]); }); return; }
+    sb.rpc("create_order", { p_type: type, p_item: itemId == null ? null : itemId }).then(function (r) {
+      if (r.error) { sbErr(r.error, "Chưa tạo được đơn"); return; }
+      var o = r.data;
+      openModal(function (box) {
+        head(box, "Thanh toán bằng mã QR", title);
+        var img = el("img"); img.alt = "Mã QR chuyển khoản " + vnd(o.amount) + ", nội dung " + o.code;
+        img.src = "https://img.vietqr.io/image/" + encodeURIComponent(bank.bin) + "-" + encodeURIComponent(bank.accountNo) + "-compact2.png?amount=" + o.amount + "&addInfo=" + encodeURIComponent(o.code) + "&accountName=" + encodeURIComponent(bank.accountName || "");
+        img.style.cssText = "width:240px;max-width:100%;margin:0 auto;display:block;border-radius:8px;background:#fff";
+        box.appendChild(img);
+        var dl = el("dl", "kv");
+        [["Số tiền", vnd(o.amount)], ["Nội dung", o.code], ["Ngân hàng", bank.bankName || ""], ["Số tài khoản", bank.accountNo], ["Chủ tài khoản", bank.accountName || ""]].forEach(function (p) { dl.appendChild(el("dt", null, p[0])); dl.appendChild(el("dd", null, p[1])); });
+        box.appendChild(dl);
+        var stt = el("p", "note", "Quét mã bằng app ngân hàng. Giữ nguyên nội dung " + o.code + " để hệ thống tự nhận. Đang chờ tiền về…"); box.appendChild(stt);
+        row(box, [button("ghost", "Đóng", closeModal)]);
+        var tries = 0;
+        clearInterval(timer);
+        timer = setInterval(function () {
+          tries++; if (tries > 300) { clearInterval(timer); stt.textContent = "Chưa thấy tiền về. Nếu đã chuyển khoản, vui lòng nhắn Zalo cho thầy kèm mã " + o.code + "."; return; }
+          sb.from("orders").select("status").eq("code", o.code).single().then(function (x) {
+            if (x.data && x.data.status === "paid") {
+              clearInterval(timer); closeModal();
+              sb.auth.getSession().then(function (s) { return liveSession(s.data.session); }).then(function () { toast("Đã nhận thanh toán, cảm ơn bạn!"); });
+            }
+          });
+        }, 3000);
+      });
+    });
+  }
+
+  /* ---- Tài liệu, tài liệu bán (thật) ---- */
+  function loadDocs() {
+    return sb.from("free_docs").select("id,category,tag,title,pages,access").order("id").then(function (r) {
+      if (r.error) return;
+      DOCS = (r.data || []).map(function (d) { return { id: "f" + d.id, dbId: d.id, cat: d.category, tag: d.tag || d.category, title: d.title, pages: d.pages, acc: d.access }; });
+    });
+  }
+  function loadShop() {
+    var q = [sb.from("shop_docs").select("id,category,tag,title,pages,price").order("id"), sb.from("shop_videos").select("doc_id,title,position").order("position"), sb.from("shop_doc_stats").select("id,downloads")];
+    if (LV.prof) q.push(sb.from("doc_access").select("doc_id,expires_at").eq("user_id", LV.prof.id));
+    return Promise.all(q).then(function (R) {
+      var vids = R[1].data || [], stats = {}; (R[2].data || []).forEach(function (s) { stats[s.id] = s.downloads; });
+      SHOP = (R[0].data || []).map(function (d) {
+        var v = vids.filter(function (x) { return x.doc_id === d.id; }).map(function (x) { return x.title; });
+        return { id: "s" + d.id, dbId: d.id, cat: d.category, tag: d.tag || d.category, title: d.title, pages: d.pages, price: d.price, vids: v.length ? v : undefined, dl: stats[d.id] || 0 };
+      });
+      st.bought = {}; st.dl = {};
+      (R[3] && R[3].data || []).forEach(function (a) { st.bought["s" + a.doc_id] = a.expires_at; });
+    });
+  }
+  function renderPayments(box) {
+    var c = el("div", "card tablebox"); c.style.cssText = "display:grid;gap:10px"; box.appendChild(c);
+    c.appendChild(el("h3", null, "Đơn hàng gần đây")); c.lastChild.style.fontSize = "17px";
+    sb.from("orders").select("code,item_type,amount,status,created_at,paid_at,user_id").order("created_at", { ascending: false }).limit(30).then(function (r) {
+      var rows = r.data || []; if (!rows.length) { c.appendChild(el("p", "note", "Chưa có đơn hàng.")); return; }
+      var ids = {}; rows.forEach(function (x) { ids[x.user_id] = 1; });
+      nickMap(ids).then(function (m) {
+        var names = { doc: "Tài liệu", doc_renew: "Gia hạn tài liệu", vip_month: "VIP 1 tháng", vip_year: "VIP 1 năm", student: "Gói Học viên", student_renew: "Gia hạn Học viên", lesson: "Buổi học lẻ" };
+        var t = el("table"); var hr = el("tr"); ["Mã", "Tài khoản", "Loại", "Số tiền", "Trạng thái", "Thời gian"].forEach(function (x) { hr.appendChild(el("th", null, x)); }); var th = el("thead"); th.appendChild(hr); t.appendChild(th);
+        var tb = el("tbody"); rows.forEach(function (x) {
+          var tr = el("tr"); tr.appendChild(el("td", "mono", x.code)); tr.appendChild(el("td", null, (m[x.user_id] || {}).nick || "?")); tr.appendChild(el("td", null, names[x.item_type] || x.item_type));
+          tr.appendChild(el("td", "num", vnd(x.amount))); tr.appendChild(el("td", x.status === "paid" ? "yes" : "no", x.status === "paid" ? "Đã thanh toán" : "Chờ thanh toán"));
+          tr.appendChild(el("td", null, new Date(x.paid_at || x.created_at).toLocaleString("vi-VN"))); tb.appendChild(tr);
+        }); t.appendChild(tb); c.appendChild(t);
+      });
+    });
+  }
+
   function liveInit() {
     document.querySelectorAll(".demo").forEach(function (x) { x.hidden = true; });
-    var bar = el("div", "livebar", "Trang đang chạy thử. Đã dùng dữ liệu thật: tài khoản, Bài tập, bình luận, Hỏi đáp, Đánh giá thầy, Khóa học hiện hành, Quản trị. Tài liệu, Mua tài liệu và thanh toán vẫn là bản mẫu.");
+    var bar = el("div", "livebar", "Trang đang chạy thử: dữ liệu và thanh toán là thật; file PDF và video sẽ có khi thầy tải lên.");
     document.querySelector("main").prepend(bar);
     try { var o = JSON.parse(localStorage.getItem(LV.pageKey) || "{}"); st.exPage = o.exPage || {}; } catch (e) {}
-    Promise.all([loadExercises(), loadComments(), loadCourse()]).then(function () {
+    Promise.all([loadExercises(), loadComments(), loadCourse(), loadDocs()]).then(function () {
       return sb.auth.getSession();
     }).then(function (s) { return liveSession(s.data.session); }).then(function () {
       sb.auth.onAuthStateChange(function (ev, session) { if (ev === "SIGNED_IN" || ev === "SIGNED_OUT") { closeModal(); liveSession(session).then(function () { if (ev === "SIGNED_IN") toast("Đã đăng nhập: " + st.nick); }); } });

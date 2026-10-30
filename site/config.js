@@ -14,6 +14,14 @@ window.HHTP_CONFIG = {
     "doi-tuyen": ""
   },
 
+  /* Tài khoản nhận tiền (hiện trên mã QR). bin: mã ngân hàng theo VietQR, ví dụ MB = 970422, Vietcombank = 970436 */
+  bank: {
+    bin: "",
+    bankName: "",
+    accountNo: "",
+    accountName: ""
+  },
+
   /* Thông tin hiện ở chân trang */
   zalo: "",
   bctNotice: ""

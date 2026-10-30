@@ -102,9 +102,40 @@ Lưu ý: dịch vụ gửi email có sẵn của Supabase chỉ gửi được v
 
 ---
 
+## Bước 7. Nhận tiền QR tự động (SePay)
+
+Khi học sinh chuyển khoản đúng nội dung (mã đơn dạng `HHTP123456`), SePay báo cho trang và trang tự mở quyền.
+
+**Phần A – Supabase**
+1. **SQL Editor** → **New query** → dán lại toàn bộ file `supabase/schema.sql` (bản mới) → **Run** (chạy lại an toàn, không mất dữ liệu). **Không** chạy lại `buoc3.sql`.
+2. **Project Settings** → **API Keys** → mục **Secret keys** → bấm hiện và **sao chép** khóa `sb_secret_...` (chỉ dán vào Cloudflare ở Phần C, không gửi qua chat).
+
+**Phần B – SePay**
+3. Đăng ký tại https://my.sepay.vn, xem mục gói dịch vụ để chọn gói phù hợp.
+4. **Ngân hàng** → **Kết nối tài khoản** → chọn ngân hàng của thầy, chọn loại **cá nhân**, làm theo hướng dẫn xác thực.
+5. (Nên làm) **Cấu hình công ty** → **Cấu trúc mã thanh toán**: tiền tố `HHTP`, phần số dài `6`.
+6. **Webhooks** → **Thêm webhook**:
+   - **Bắn webhook khi:** Có tiền vào
+   - **Gọi đến URL:** `https://hoahoccvp.pages.dev/api/sepay-webhook`
+   - **Kiểu chứng thực:** **API Key** → tạo một chuỗi dài, ngẫu nhiên (hoặc dùng chuỗi SePay tạo) và **chép lại**
+   - **Request Content type:** `application/json`
+   - **Lưu**
+
+**Phần C – Cloudflare Pages**
+7. Cloudflare → **Workers & Pages** → dự án **hoahoccvp** → **Settings** → **Variables and Secrets** → **Add**, thêm 3 biến (môi trường **Production**):
+   - `SUPABASE_URL` (Type: Text) = `https://gslzetfiospsuveufmpr.supabase.co`
+   - `SUPABASE_SERVICE_KEY` (Type: **Secret**) = khóa `sb_secret_...` ở bước 2
+   - `SEPAY_API_KEY` (Type: **Secret**) = API Key ở bước 6
+   → **Save**.
+8. **Deployments** → bản mới nhất → **⋯** → **Retry deployment** (để trang nhận biến mới).
+
+**Phần D – Gửi Claude** thông tin hiện trên mã QR (đây là thông tin công khai khi người khác chuyển khoản):
+ngân hàng, số tài khoản, tên chủ tài khoản (viết không dấu như trên app ngân hàng).
+
+---
+
 ## Các bước tiếp theo (Claude sẽ gửi hướng dẫn chi tiết khi tới lượt)
 
 7. Tạo kho lưu file PDF (Cloudflare R2) và thư viện video (Bunny Stream).
-8. Kết nối nhận tiền QR tự động vào tài khoản ngân hàng cá nhân.
 9. Mua và gắn tên miền riêng.
 10. Gắn link 3 Google Form đăng ký học, số Zalo, thông tin giới thiệu.
