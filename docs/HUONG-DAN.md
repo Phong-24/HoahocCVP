@@ -159,8 +159,6 @@ ngân hàng, số tài khoản, tên chủ tài khoản (viết không dấu nh�
 9. **Video:** tải video lên Bunny (thư viện `hoahoccvp` → **Upload**), mở video → chép **Video ID** (dạng `eb1c4f77-0cda-…`) → dán vào ô "Video ID trên Bunny" tương ứng → **Lưu**.
 10. Thêm tài liệu bán, tài liệu miễn phí, buổi học, video mới ngay trong trang Quản trị.
 
-**Đóng dấu tên người mua lên PDF (tùy chọn):** cần gói Workers Paid của Cloudflare (5 USD/tháng) vì xử lý PDF tốn thời gian máy. Khi đã nâng gói: thêm biến `WATERMARK` (Text) = `1`.
-
 ---
 
 ## Các bước tiếp theo (Claude sẽ gửi hướng dẫn chi tiết khi tới lượt)
