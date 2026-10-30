@@ -1298,6 +1298,28 @@
     fi.addEventListener("change", function () { uploadPdf(type, id, fi.files[0], reload); }); lb.appendChild(fi); w.appendChild(lb);
     return w;
   }
+  /* Tên có nút Sửa (và Xóa nếu cho phép) cho trang Quản trị */
+  function nameCell(prefix, text, table, id, done, canDelete, tag) {
+    var w = el("span", "cact"); w.style.gap = "6px";
+    function show() {
+      w.innerHTML = ""; w.appendChild(el(tag || "span", null, prefix + text));
+      var e = el("button", "linkbtn", "Sửa tên"); e.type = "button"; e.style.marginLeft = "8px"; e.addEventListener("click", edit); w.appendChild(e);
+      if (canDelete) {
+        var x = el("button", "linkbtn", "Xóa"); x.type = "button"; x.style.cssText = "color:var(--bad);margin-left:8px";
+        x.addEventListener("click", function () { if (!confirm("Xóa “" + text + "”?")) return; sb.from(table).delete().eq("id", id).then(function (r) { if (r.error) { sbErr(r.error); return; } toast("Đã xóa"); done(); }); });
+        w.appendChild(x);
+      }
+    }
+    function edit() {
+      w.innerHTML = ""; var inp = el("input", "inp"); inp.value = text; inp.style.maxWidth = "320px"; inp.setAttribute("aria-label", "Tên mới"); w.appendChild(inp);
+      w.appendChild(button("sm", "Lưu", function () {
+        var v = inp.value.trim(); if (!v) { toast("Tên không được để trống"); return; }
+        sb.from(table).update({ title: v }).eq("id", id).then(function (r) { if (r.error) { sbErr(r.error); return; } text = v; toast("Đã sửa tên"); show(); done(); });
+      }));
+      w.appendChild(button("ghost sm", "Hủy", show)); inp.focus();
+    }
+    show(); return w;
+  }
   function vidCell(type, id, cur, reload) {
     var w = el("div", "cact");
     var inp = el("input", "inp"); inp.placeholder = "Video ID trên Bunny"; inp.value = cur || ""; inp.style.maxWidth = "260px"; inp.setAttribute("aria-label", "Video ID Bunny");
@@ -1344,7 +1366,7 @@
         }));
         (R[0].data || []).forEach(function (d) {
           var c = el("div", "admrow" + (d.published ? "" : " off"));
-          var h = el("div", "cact"); h.appendChild(el("b", null, d.title)); h.appendChild(el("span", "note", d.category + " · " + vnd(d.price) + (d.published ? "" : " · đang ẩn")));
+          var h = el("div", "cact"); h.appendChild(nameCell("", d.title, "shop_docs", d.id, function () { reload(); loadShop().then(renderShop); }, false, "b")); h.appendChild(el("span", "note", d.category + " · " + vnd(d.price) + (d.published ? "" : " · đang ẩn")));
           h.appendChild(button("ghost sm", d.published ? "Ẩn" : "Hiện", function () { sb.from("shop_docs").update({ published: !d.published }).eq("id", d.id).then(function () { reload(); loadShop().then(renderShop); }); }));
           c.appendChild(h);
           c.appendChild(pdfCell("shop_doc", d.id, !!S("shop_doc", d.id).storage_key, reload));
@@ -1352,7 +1374,7 @@
           pv.appendChild(pin); pv.appendChild(button("sm", "Lưu link xem thử", function () { sb.from("shop_docs").update({ preview_url: pin.value.trim() || null }).eq("id", d.id).then(function (x) { if (x.error) { sbErr(x.error); return; } toast("Đã lưu link xem thử"); loadShop().then(renderShop); }); }));
           c.appendChild(pv);
           (R[1].data || []).filter(function (v) { return v.doc_id === d.id; }).forEach(function (v) {
-            var vr = el("div", "cact"); vr.appendChild(el("span", null, "▶ " + v.title)); vr.appendChild(vidCell("shop_video", v.id, S("shop_video", v.id).bunny_video_id, reload)); c.appendChild(vr);
+            var vr = el("div", "cact"); vr.appendChild(nameCell("▶ ", v.title, "shop_videos", v.id, function () { reload(); loadShop().then(renderShop); }, true)); vr.appendChild(vidCell("shop_video", v.id, S("shop_video", v.id).bunny_video_id, reload)); c.appendChild(vr);
           });
           c.appendChild(miniForm([{ k: "t", label: "Tên video mới", ph: "Tên video đính kèm mới", w: "320px" }], "Thêm video", function (o) {
             if (!o.t) return; var n = (R[1].data || []).filter(function (v) { return v.doc_id === d.id; }).length;
@@ -1372,7 +1394,7 @@
         }));
         (R[2].data || []).forEach(function (d) {
           var c = el("div", "admrow" + (d.published ? "" : " off"));
-          var h = el("div", "cact"); h.appendChild(el("b", null, d.title)); h.appendChild(el("span", "note", d.category + " · " + (d.access === "ad" ? "xem quảng cáo" : "đọc tự do") + (d.published ? "" : " · đang ẩn")));
+          var h = el("div", "cact"); h.appendChild(nameCell("", d.title, "free_docs", d.id, function () { reload(); loadDocs().then(renderDocs); }, false, "b")); h.appendChild(el("span", "note", d.category + " · " + (d.access === "ad" ? "xem quảng cáo" : "đọc tự do") + (d.published ? "" : " · đang ẩn")));
           h.appendChild(button("ghost sm", d.published ? "Ẩn" : "Hiện", function () { sb.from("free_docs").update({ published: !d.published }).eq("id", d.id).then(function () { reload(); loadDocs().then(renderDocs); }); }));
           c.appendChild(h); c.appendChild(pdfCell("free_doc", d.id, !!S("free_doc", d.id).storage_key, reload)); d2.appendChild(c);
         });
@@ -1387,9 +1409,9 @@
             sb.from("lessons").insert({ course_id: course.id, n: ls.length + 1, title: o.title, held_on: o.date || null }).then(function (r) { if (r.error) { sbErr(r.error); return; } toast("Đã thêm buổi học"); reload(); loadCourse().then(renderCourse); });
           }));
           ls.slice().reverse().forEach(function (l) {
-            var c = el("div", "admrow"); c.appendChild(el("b", null, "Buổi " + l.n + ": " + l.title + (l.held_on ? " · " + vnDate(l.held_on) : "")));
+            var c = el("div", "admrow"); c.appendChild(nameCell("Buổi " + l.n + ": ", l.title, "lessons", l.id, function () { reload(); loadCourse().then(renderCourse); }, false, "b")); if (l.held_on) c.appendChild(el("span", "note", vnDate(l.held_on)));
             (l.lesson_files || []).sort(function (a, b) { return a.position - b.position; }).forEach(function (f) {
-              var fr = el("div", "cact"); fr.appendChild(el("span", null, (f.kind === "pdf" ? "📄 " : "▶ ") + f.title));
+              var fr = el("div", "cact"); fr.appendChild(nameCell(f.kind === "pdf" ? "📄 " : "▶ ", f.title, "lesson_files", f.id, function () { reload(); loadCourse().then(renderCourse); }, true));
               fr.appendChild(f.kind === "pdf" ? pdfCell("lesson_file", f.id, !!S("lesson_file", f.id).storage_key, reload) : vidCell("lesson_file", f.id, S("lesson_file", f.id).bunny_video_id, reload));
               c.appendChild(fr);
             });
