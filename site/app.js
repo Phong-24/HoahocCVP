@@ -115,7 +115,7 @@
   var CFG = window.HHTP_CONFIG || {};
   var LIVE = !!(CFG.supabaseUrl && CFG.supabaseAnonKey && window.supabase);
   var sb = LIVE ? window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey) : null;
-  if (LIVE) { BASIC = []; ADV = []; CM_SEED = {}; COURSE = { name: "Khóa học hiện hành", desc: "Đang tải…", meta: [], lessons: [] }; }
+  if (LIVE) { BASIC = []; ADV = []; CM_SEED = {}; TOPICS = []; REVIEWS = []; COURSE = { name: "Khóa học hiện hành", desc: "Đang tải…", meta: [], lessons: [] }; }
 
   /* ================= trạng thái ================= */
   var KEY = "hhtp-demo-v3";
@@ -427,20 +427,21 @@
     var back = el("button", "linkbtn", "← Tất cả câu hỏi"); back.type = "button"; back.style.cssText += ";justify-self:start;font-size:14px";
     back.addEventListener("click", function () { forumOpen = null; renderForum(); }); box.appendChild(back);
     var card = el("article", "card post"); card.appendChild(topicMeta(t)); card.appendChild(el("h3", null, t.title));
-    card.appendChild(cmtEl({ n: t.n, r: t.r, t: t.body, ts: t.ts })); box.appendChild(card);
+    var tex = null; if (LIVE && !t.mine) { tex = el("div", "cact"); var trp = el("button", "linkbtn", "Báo cáo"); trp.type = "button"; trp.style.color = "var(--muted)"; trp.addEventListener("click", function () { liveReport("topic", t.id); }); tex.appendChild(trp); }
+    card.appendChild(cmtEl({ n: t.n, r: t.r, t: t.body, ts: t.ts }, tex)); box.appendChild(card);
     var rs = repliesOf(t), best = bestOf(t);
     var wrap = el("div", "card cmts"); wrap.appendChild(el("h3", null, rs.length ? rs.length + " câu trả lời" : "Chưa có câu trả lời")); wrap.lastChild.style.fontSize = "16px";
     rs.forEach(function (r, i) {
       var ex = el("div", "cact"), k = t.id + ":" + i, liked = !!st.likes[k], n = (r.likes || 0) + (liked ? 1 : 0);
       var lb = el("button", "linkbtn", (liked ? "Đã thấy hữu ích" : "Hữu ích") + " · " + n); lb.type = "button"; lb.setAttribute("aria-pressed", String(liked));
-      lb.addEventListener("click", function () { if (!logged()) { showLogin("Đăng nhập để bình chọn"); return; } if (st.likes[k]) delete st.likes[k]; else st.likes[k] = true; save(); renderForum(); });
+      lb.addEventListener("click", function () { if (!logged()) { showLogin("Đăng nhập để bình chọn"); return; } if (LIVE) { liveLike(t, i); return; } if (st.likes[k]) delete st.likes[k]; else st.likes[k] = true; save(); renderForum(); });
       ex.appendChild(lb);
       if (i === best) ex.appendChild(el("span", "badge ok", "✓ Câu trả lời đúng"));
-      else if (t.mine && best == null) { var pb = el("button", "linkbtn", "Chọn là câu trả lời đúng"); pb.type = "button"; pb.addEventListener("click", function () { st.solved[t.id] = i; save(); renderForum(); toast("Đã đánh dấu câu hỏi đã giải quyết"); }); ex.appendChild(pb); }
-      var rp = el("button", "linkbtn", "Báo cáo"); rp.type = "button"; rp.style.color = "var(--muted)"; rp.addEventListener("click", function () { toast("Đã gửi báo cáo, thầy sẽ xem xét"); }); ex.appendChild(rp);
+      else if (t.mine && best == null) { var pb = el("button", "linkbtn", "Chọn là câu trả lời đúng"); pb.type = "button"; pb.addEventListener("click", function () { if (LIVE) { liveBest(t, i); return; } st.solved[t.id] = i; save(); renderForum(); toast("Đã đánh dấu câu hỏi đã giải quyết"); }); ex.appendChild(pb); }
+      var rp = el("button", "linkbtn", "Báo cáo"); rp.type = "button"; rp.style.color = "var(--muted)"; rp.addEventListener("click", function () { if (LIVE) { liveReport("reply", r.rid); return; } toast("Đã gửi báo cáo, thầy sẽ xem xét"); }); ex.appendChild(rp);
       var ce = cmtEl(r, ex); if (i === best) ce.classList.add("best"); wrap.appendChild(ce);
     });
-    wrap.appendChild(composer("Viết câu trả lời của bạn…", "Trả lời câu hỏi", function (v) { (st.rep[t.id] = st.rep[t.id] || []).push(me(v)); save(); renderForum(); toast("Đã gửi câu trả lời"); }));
+    wrap.appendChild(composer("Viết câu trả lời của bạn…", "Trả lời câu hỏi", function (v) { if (LIVE) { liveReply(t, v); return; } (st.rep[t.id] = st.rep[t.id] || []).push(me(v)); save(); renderForum(); toast("Đã gửi câu trả lời"); }));
     box.appendChild(wrap);
   }
   function askModal() {
@@ -453,12 +454,13 @@
       field("Chuyên mục", sel);
       var body = el("textarea", "inp"); body.id = "askBody"; body.maxLength = 2000; body.placeholder = "Chép đề bài và ghi rõ em đang vướng ở bước nào.";
       field("Nội dung", body);
-      box.appendChild(el("p", "note", "Bản thật cho đính kèm ảnh chụp đề bài."));
+      if (!LIVE) box.appendChild(el("p", "note", "Bản thật cho đính kèm ảnh chụp đề bài."));
       var err = el("p", "err"); err.hidden = true; box.appendChild(err);
       row(box, [button("ghost", "Hủy", closeModal), button("", "Đăng câu hỏi", function () {
         var tt = ti.value.trim(), bd = body.value.trim();
         var msg = tt.length < 8 ? "Tiêu đề cần rõ hơn (ít nhất 8 ký tự)." : bd.length < 10 ? "Viết thêm nội dung câu hỏi." : "";
         if (msg) { err.textContent = msg; err.hidden = false; return; }
+        if (LIVE) { liveAsk(sel.value, tt, bd).then(function (ok) { if (ok) { closeModal(); if (location.hash !== "#hoi-dap") location.hash = "#hoi-dap"; } }); return; }
         var t = { id: "u" + Date.now(), n: st.nick, r: st.role, g: sel.value, title: tt, body: bd, ts: Date.now(), mine: true, replies: [] };
         st.topics.push(t); forumOpen = t.id; save(); closeModal();
         if (location.hash !== "#hoi-dap") location.hash = "#hoi-dap";
@@ -707,7 +709,7 @@
   function renderAdmin() {
     var box = $("adminBox"); box.innerHTML = "";
     if (st.role !== "teacher") { box.appendChild(el("p", "card note", LIVE ? "Trang này chỉ dành cho thầy." : "Trang này chỉ dành cho thầy. Trong bản mẫu, chọn vai trò \"Thầy\" ở cuối trang để xem.")); return; }
-    if (LIVE) { renderAdminLive(box); return; }
+    if (LIVE) { renderAdminLive(box); renderModeration(box); return; }
     var L = accounts(), nextLesson = COURSE.lessons.length + 1;
     var g = el("div", "grid2"); g.style.alignItems = "start";
     /* cấp quyền */
@@ -792,14 +794,19 @@
   function stars(n) { var sp = el("span", "stars", "★★★★★".slice(0, n) + "☆☆☆☆☆".slice(0, 5 - n)); sp.setAttribute("aria-label", n + " trên 5 sao"); return sp; }
   function renderReviews() {
     var all = (st.review ? [st.review] : []).concat(REVIEWS);
-    var avg = all.reduce(function (a, r) { return a + r.s; }, 0) / all.length;
-    var h = $("rvAvg"); h.innerHTML = ""; h.appendChild(stars(Math.round(avg))); h.appendChild(el("b", null, " " + avg.toFixed(1).replace(".", ",") + "/5")); h.appendChild(el("span", "note", " · " + all.length + " đánh giá"));
+    var pub = all.filter(function (r) { return !r.pending; });
+    var avg = pub.length ? pub.reduce(function (a, r) { return a + r.s; }, 0) / pub.length : 0;
+    var h = $("rvAvg"); h.innerHTML = "";
+    if (pub.length) { h.appendChild(stars(Math.round(avg))); h.appendChild(el("b", null, " " + avg.toFixed(1).replace(".", ",") + "/5")); h.appendChild(el("span", "note", " · " + pub.length + " đánh giá")); }
+    else h.appendChild(el("span", "note", "Chưa có đánh giá"));
+    if (LIVE && $("rvNote")) $("rvNote").textContent = "Thành viên có tài khoản viết đánh giá; mỗi tài khoản một đánh giá, thầy duyệt trước khi hiện.";
     var box = $("reviews"); box.innerHTML = "";
     all.forEach(function (r) {
       var ex = el("div"); ex.appendChild(stars(r.s));
       var c = cmtEl({ n: r.n, r: r.r, t: r.t, ts: r.ts }, null);
       var who = c.querySelector(".who"); who.insertBefore(el("span", "badge", r.who), who.querySelector("time"));
       c.querySelector("p").before(ex);
+      if (r.pending) who.insertBefore(el("span", "badge st", "Chờ thầy duyệt"), who.querySelector("time"));
       if (r === st.review) { var ed = el("button", "linkbtn", "Sửa đánh giá"); ed.type = "button"; ed.addEventListener("click", function () { rvEdit = true; rvStars = r.s; renderReviews(); }); c.lastChild.appendChild(ed); }
       box.appendChild(c);
     });
@@ -821,8 +828,9 @@
     var ta = el("textarea"); ta.placeholder = "Cảm nhận của bạn về cách dạy, tài liệu, sự tiến bộ…"; ta.maxLength = 800; ta.setAttribute("aria-label", "Nội dung đánh giá"); if (st.review) ta.value = st.review.t; f.appendChild(ta);
     var r2 = el("div", "mrow"); r2.style.cssText = "justify-content:space-between;align-items:center";
     r2.appendChild(el("span", "note", "Đăng với tên " + st.nick + " · đánh giá được thầy duyệt trước khi hiện"));
-    var sb = el("button", "btn sm", st.review ? "Lưu đánh giá" : "Gửi đánh giá"); sb.type = "submit"; r2.appendChild(sb); f.appendChild(r2);
+    var sbt = el("button", "btn sm", st.review ? "Lưu đánh giá" : "Gửi đánh giá"); sbt.type = "submit"; r2.appendChild(sbt); f.appendChild(r2);
     f.addEventListener("submit", function (e) { e.preventDefault(); var v = ta.value.trim(); if (v.length < 10) { ta.focus(); toast("Viết thêm vài câu cảm nhận nhé"); return; }
+      if (LIVE) { liveSaveReview(sel.value, rvStars, v); return; }
       st.review = { n: st.nick, r: st.role, who: sel.value, s: rvStars, t: v, ts: Date.now() }; rvEdit = false; save(); renderReviews(); toast("Đã gửi đánh giá"); });
     fw.appendChild(f);
   }
@@ -872,6 +880,9 @@
         });
       });
       row(box, [button("ghost", "Đóng", closeModal), send]);
+      var or = el("p", "note", "hoặc"); or.style.textAlign = "center"; box.appendChild(or);
+      var g = button("ghost", "Đăng nhập bằng Google", function () { LV.after = onDone || null; sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + location.pathname } }).then(function (r) { if (r.error) sbErr(r.error, "Chưa đăng nhập Google được"); }); });
+      g.style.width = "100%"; box.appendChild(g);
     });
   }
   function accountMenu() {
@@ -968,7 +979,7 @@
     for (var k in base) st[k] = base[k];
     st.exPage = keepPage;
     BASIC.concat(ADV, ESSAY).forEach(function (q) { delete q._k; delete q._s; });
-    var p = u ? loadMine(u.id) : Promise.resolve();
+    var p = (u ? loadMine(u.id) : Promise.resolve()).then(function () { return Promise.all([loadForum(), loadReviews()]); });
     return p.then(function () { pageNow = {}; renderAll(); if (u && LV.after) { var f = LV.after; LV.after = null; f(); } });
   }
   function liveRedeem(code) {
@@ -1043,9 +1054,112 @@
       }); t.appendChild(tb); c3.appendChild(t);
     });
   }
+  /* ---- Hỏi đáp (thật) ---- */
+  function nickMap(ids) {
+    ids = Object.keys(ids || {}); if (!ids.length) return Promise.resolve({});
+    return sb.from("public_profiles").select("id,nick,role").in("id", ids).then(function (r) { var m = {}; (r.data || []).forEach(function (p) { m[p.id] = p; }); return m; });
+  }
+  function loadForum() {
+    var uid = LV.prof && LV.prof.id;
+    return Promise.all([
+      sb.from("topics").select("id,user_id,category,title,body,best_reply_id,created_at").order("id", { ascending: false }),
+      sb.from("replies").select("id,topic_id,user_id,body,created_at").order("id"),
+      sb.from("reply_likes").select("user_id,reply_id")
+    ]).then(function (R) {
+      var T = R[0].data || [], P = R[1].data || [], L = R[2].data || [], ids = {};
+      T.forEach(function (t) { ids[t.user_id] = 1; }); P.forEach(function (p) { ids[p.user_id] = 1; });
+      return nickMap(ids).then(function (m) {
+        var who = function (id) { return m[id] || { nick: "?", role: "member" }; };
+        st.likes = {}; st.solved = {}; st.topics = []; st.rep = {};
+        TOPICS = T.map(function (t) {
+          var reps = P.filter(function (p) { return p.topic_id === t.id; });
+          var o = { id: t.id, n: who(t.user_id).nick, r: who(t.user_id).role, g: t.category, title: t.title, body: t.body, ts: new Date(t.created_at).getTime(), mine: t.user_id === uid, replies: [] };
+          reps.forEach(function (p, i) {
+            var total = L.filter(function (l) { return l.reply_id === p.id; }).length, mineLike = L.some(function (l) { return l.reply_id === p.id && l.user_id === uid; });
+            if (mineLike) st.likes[t.id + ":" + i] = true;
+            o.replies.push({ rid: p.id, n: who(p.user_id).nick, r: who(p.user_id).role, t: p.body, ts: new Date(p.created_at).getTime(), likes: total - (mineLike ? 1 : 0) });
+            if (t.best_reply_id === p.id) o.best = i;
+          });
+          return o;
+        });
+      });
+    });
+  }
+  function forumAfter(msg) { return loadForum().then(function () { renderForum(); if (msg) toast(msg); }); }
+  function liveLike(t, i) {
+    var r = t.replies[i], k = t.id + ":" + i;
+    var q = st.likes[k] ? sb.from("reply_likes").delete().eq("user_id", LV.prof.id).eq("reply_id", r.rid) : sb.from("reply_likes").insert({ user_id: LV.prof.id, reply_id: r.rid });
+    q.then(function (x) { if (x.error) { sbErr(x.error); return; } forumAfter(); });
+  }
+  function liveBest(t, i) { sb.from("topics").update({ best_reply_id: t.replies[i].rid }).eq("id", t.id).then(function (x) { if (x.error) { sbErr(x.error); return; } forumAfter("Đã đánh dấu câu hỏi đã giải quyết"); }); }
+  function liveReply(t, v) { sb.from("replies").insert({ topic_id: t.id, user_id: LV.prof.id, body: v }).then(function (x) { if (x.error) { sbErr(x.error, "Chưa gửi được"); return; } forumAfter("Đã gửi câu trả lời"); }); }
+  function liveAsk(cat, title, body) {
+    return sb.from("topics").insert({ user_id: LV.prof.id, category: cat, title: title, body: body }).select("id").single().then(function (x) {
+      if (x.error) { sbErr(x.error, "Chưa đăng được"); return false; }
+      forumOpen = x.data.id; return forumAfter("Đã đăng câu hỏi").then(function () { return true; });
+    });
+  }
+  function liveReport(type, id) {
+    if (!logged()) { showLogin("Đăng nhập để báo cáo"); return; }
+    sb.from("reports").insert({ user_id: LV.prof.id, target_type: type, target_id: id }).then(function (x) { if (x.error) { sbErr(x.error); return; } toast("Đã gửi báo cáo, thầy sẽ xem xét"); });
+  }
+
+  /* ---- Đánh giá thầy (thật) ---- */
+  function loadReviews() {
+    return sb.from("reviews").select("user_id,who,stars,body,approved,updated_at").order("updated_at", { ascending: false }).then(function (r) {
+      var rows = r.data || [], ids = {}; rows.forEach(function (x) { ids[x.user_id] = 1; });
+      return nickMap(ids).then(function (m) {
+        var uid = LV.prof && LV.prof.id;
+        var map = function (x) { var p = m[x.user_id] || { nick: "?", role: "member" }; return { n: p.nick, r: p.role, who: x.who, s: x.stars, t: x.body, ts: new Date(x.updated_at).getTime(), pending: !x.approved }; };
+        REVIEWS = rows.filter(function (x) { return x.approved && x.user_id !== uid; }).map(map);
+        var mine = rows.filter(function (x) { return x.user_id === uid; })[0];
+        st.review = mine ? map(mine) : null;
+      });
+    });
+  }
+  function liveSaveReview(who, s, body) {
+    sb.from("reviews").upsert({ user_id: LV.prof.id, who: who, stars: s, body: body }, { onConflict: "user_id" }).then(function (x) {
+      if (x.error) { sbErr(x.error, "Chưa gửi được"); return; }
+      rvEdit = false; loadReviews().then(function () { renderReviews(); toast("Đã gửi đánh giá, thầy sẽ duyệt trước khi hiện"); });
+    });
+  }
+
+  /* ---- Quản trị: duyệt đánh giá, xử lý báo cáo ---- */
+  function renderModeration(box) {
+    var c = el("div", "card"); c.style.cssText = "display:grid;gap:10px"; box.appendChild(c);
+    c.appendChild(el("h3", null, "Đánh giá chờ duyệt")); c.lastChild.style.fontSize = "17px";
+    var rvBox = el("div", "cmts"); c.appendChild(rvBox);
+    sb.from("reviews").select("user_id,who,stars,body,updated_at").eq("approved", false).order("updated_at").then(function (r) {
+      var rows = r.data || []; if (!rows.length) { rvBox.appendChild(el("p", "note", "Không có đánh giá nào chờ duyệt.")); return; }
+      var ids = {}; rows.forEach(function (x) { ids[x.user_id] = 1; });
+      nickMap(ids).then(function (m) { rows.forEach(function (x) {
+        var ex = el("div", "cact"); ex.appendChild(stars(x.stars));
+        var ok = el("button", "btn sm", "Duyệt"); ok.type = "button"; ok.addEventListener("click", function () { sb.from("reviews").update({ approved: true }).eq("user_id", x.user_id).then(function (y) { if (y.error) { sbErr(y.error); return; } toast("Đã duyệt"); renderAdmin(); }); }); ex.appendChild(ok);
+        rvBox.appendChild(cmtEl({ n: (m[x.user_id] || {}).nick || "?", r: (m[x.user_id] || {}).role, t: x.who + ": " + x.body, ts: new Date(x.updated_at).getTime() }, ex));
+      }); });
+    });
+    var c2 = el("div", "card"); c2.style.cssText = "display:grid;gap:10px"; box.appendChild(c2);
+    c2.appendChild(el("h3", null, "Báo cáo vi phạm")); c2.lastChild.style.fontSize = "17px";
+    var rpBox = el("div", "cmts"); c2.appendChild(rpBox);
+    sb.from("reports").select("id,target_type,target_id,created_at").eq("resolved", false).order("id").then(function (r) {
+      var rows = r.data || []; if (!rows.length) { rpBox.appendChild(el("p", "note", "Không có báo cáo mới.")); return; }
+      var tbl = { comment: "comments", topic: "topics", reply: "replies" }, label = { comment: "Bình luận bài tập", topic: "Câu hỏi", reply: "Câu trả lời", review: "Đánh giá" };
+      rows.forEach(function (x) {
+        var line = el("div", "cact"); line.appendChild(el("b", null, label[x.target_type] + " #" + x.target_id));
+        var txt = el("span", "note", "Đang tải nội dung…"); line.appendChild(txt);
+        if (tbl[x.target_type]) sb.from(tbl[x.target_type]).select(x.target_type === "topic" ? "title,body" : "body").eq("id", x.target_id).single().then(function (y) { txt.textContent = y.data ? "“" + (y.data.title ? y.data.title + ": " : "") + y.data.body.slice(0, 140) + "”" : "(đã xóa)"; });
+        var hide = el("button", "btn sm amber", "Ẩn nội dung"); hide.type = "button";
+        hide.addEventListener("click", function () { sb.from(tbl[x.target_type]).update({ hidden: true }).eq("id", x.target_id).then(function () { return sb.from("reports").update({ resolved: true }).eq("id", x.id); }).then(function () { toast("Đã ẩn"); renderAdmin(); }); });
+        var skip = el("button", "btn sm ghost", "Bỏ qua"); skip.type = "button";
+        skip.addEventListener("click", function () { sb.from("reports").update({ resolved: true }).eq("id", x.id).then(function () { renderAdmin(); }); });
+        if (tbl[x.target_type]) line.appendChild(hide); line.appendChild(skip); rpBox.appendChild(line);
+      });
+    });
+  }
+
   function liveInit() {
     document.querySelectorAll(".demo").forEach(function (x) { x.hidden = true; });
-    var bar = el("div", "livebar", "Trang đang chạy thử. Đã dùng dữ liệu thật: tài khoản, Bài tập, bình luận bài tập, Khóa học hiện hành, Quản trị. Hỏi đáp, Tài liệu, Mua tài liệu, Đánh giá và thanh toán vẫn là bản mẫu.");
+    var bar = el("div", "livebar", "Trang đang chạy thử. Đã dùng dữ liệu thật: tài khoản, Bài tập, bình luận, Hỏi đáp, Đánh giá thầy, Khóa học hiện hành, Quản trị. Tài liệu, Mua tài liệu và thanh toán vẫn là bản mẫu.");
     document.querySelector("main").prepend(bar);
     try { var o = JSON.parse(localStorage.getItem(LV.pageKey) || "{}"); st.exPage = o.exPage || {}; } catch (e) {}
     Promise.all([loadExercises(), loadComments(), loadCourse()]).then(function () {

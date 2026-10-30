@@ -77,9 +77,33 @@ Lưu ý: dịch vụ gửi email có sẵn của Supabase chỉ gửi được v
 
 ---
 
+## Bước 6. Đăng nhập bằng Google
+
+**Phần A – Google Cloud** (dùng tài khoản Google của thầy):
+
+1. Vào https://console.cloud.google.com → đồng ý điều khoản nếu được hỏi.
+2. Góc trên bên trái bấm ô chọn dự án → **New project** → tên `hoahoccvp` → **Create**. Chọn dự án vừa tạo.
+3. Ô tìm kiếm trên cùng gõ **Google Auth Platform** (hoặc **OAuth consent screen**) → **Get started**:
+   - **App name:** `Hóa Học Thầy Phòng`; **User support email:** email của thầy → **Next**
+   - **Audience:** **External** → **Next**
+   - **Contact information:** email của thầy → **Next** → tick đồng ý → **Create**
+4. Mục **Audience** → bấm **Publish app** → **Confirm** (để mọi học sinh đăng nhập được, không chỉ tài khoản thử).
+5. Mục **Clients** → **Create client**:
+   - **Application type:** `Web application`; **Name:** `hoahoccvp`
+   - **Authorized JavaScript origins** → **Add URI:** `https://hoahoccvp.pages.dev`
+   - **Authorized redirect URIs** → **Add URI:** `https://gslzetfiospsuveufmpr.supabase.co/auth/v1/callback`
+   - **Create** → hiện **Client ID** và **Client secret**. Giữ cửa sổ này mở (hoặc tải file JSON về).
+
+**Phần B – Supabase:**
+
+6. Supabase → **Authentication** → **Sign In / Providers** → **Google** → bật **Enable Sign in with Google**.
+7. Dán **Client ID** và **Client Secret** (thầy tự dán, không gửi qua chat) → **Save**.
+8. Mở trang web → **Đăng nhập** → **Đăng nhập bằng Google** để thử.
+
+---
+
 ## Các bước tiếp theo (Claude sẽ gửi hướng dẫn chi tiết khi tới lượt)
 
-6. Bật đăng nhập Google.
 7. Tạo kho lưu file PDF (Cloudflare R2) và thư viện video (Bunny Stream).
 8. Kết nối nhận tiền QR tự động vào tài khoản ngân hàng cá nhân.
 9. Mua và gắn tên miền riêng.
