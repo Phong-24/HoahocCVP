@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Học Hóa cùng thầy Phòng: bài tập có lời giải, tài liệu, hỏi đáp và khóa học.">
+<title>Hóa Học Thầy Phòng</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Lexend:wght@500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: sticky bar with scrollable section nav; hash views; element-tile motif (periodic-table cells) */
+:root{
+  --bg:#F6F9FA; --surface:#FFFFFF; --tint:#E7F1F2; --line:#D2DEE1;
+  --ink:#14262E; --muted:#56707A;
+  --brand:#0B6670; --brand-ink:#FFFFFF;
+  --amber:#C9650F; --amber-soft:#FCEBD9;
+  --vip:#7A4BB0; --vip-soft:#EFE6F8;
+  --ok:#1E8A4C; --ok-soft:#DDF3E6; --bad:#B8322A; --bad-soft:#F8E0DE;
+  --display:"Lexend","Be Vietnam Pro",system-ui,sans-serif;
+  --body:"Be Vietnam Pro",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0E1A1F; --surface:#15252C; --tint:#1A3138; --line:#2A424A; --ink:#E4EEF0; --muted:#93AAB2;
+  --brand:#3FB3BD; --brand-ink:#06191C; --amber:#F0954A; --amber-soft:#3A2A1C; --vip:#B98CEB; --vip-soft:#2E2340;
+  --ok:#52C487; --ok-soft:#163626; --bad:#EE7A70; --bad-soft:#3A1E1C; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E1A1F; --surface:#15252C; --tint:#1A3138; --line:#2A424A; --ink:#E4EEF0; --muted:#93AAB2;
+  --brand:#3FB3BD; --brand-ink:#06191C; --amber:#F0954A; --amber-soft:#3A2A1C; --vip:#B98CEB; --vip-soft:#2E2340;
+  --ok:#52C487; --ok-soft:#163626; --bad:#EE7A70; --bad-soft:#3A1E1C; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{background:var(--bg);color:var(--ink)}
+body{font-family:var(--body);font-size:15.5px;line-height:1.55}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+.wrap{max-width:1100px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.22}
+h2.page{font-size:clamp(24px,3.4vw,30px)}
+p{margin:0}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+.bar-top{display:flex;align-items:center;gap:12px;padding-block:10px}
+.logo{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink);margin-right:auto;min-width:0}
+.logo span.name{font-family:var(--display);font-weight:600;font-size:17px;white-space:nowrap}
+.tile{display:inline-grid;grid-template-rows:auto 1fr;width:40px;height:44px;border:2px solid var(--brand);border-radius:6px;background:var(--surface);padding:2px 4px;line-height:1;flex:none}
+.tile small{font-family:var(--mono);font-size:9px;color:var(--muted)}
+.tile b{font-family:var(--display);font-size:18px;color:var(--brand);align-self:center;justify-self:center}
+.navscroll{overflow-x:auto;scrollbar-width:none}
+.navscroll::-webkit-scrollbar{display:none}
+nav{display:flex;gap:2px;padding-bottom:8px;width:max-content}
+nav a{padding:7px 12px;border-radius:999px;color:var(--muted);text-decoration:none;font-weight:500;font-size:14.5px;white-space:nowrap}
+nav a[aria-current="page"]{background:var(--tint);color:var(--brand)}
+.acct{display:flex;align-items:center;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;background:var(--tint);font-weight:600;font-size:13.5px;white-space:nowrap}
+.chip.vip{background:var(--vip-soft);color:var(--vip)}
+.chip.amber{background:var(--amber-soft);color:var(--amber)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+main{padding-block:26px 40px}
+.view{display:grid;gap:26px}
+.lead{color:var(--muted);max-width:64ch;margin-top:6px}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--amber);font-weight:700}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:20px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.note{font-size:13px;color:var(--muted)}
+.fill{background:var(--amber-soft);color:var(--amber);padding:0 4px;border-radius:4px;font-weight:600}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 15px;border-radius:8px;border:none;background:var(--brand);color:var(--brand-ink);font-weight:600;font-size:14.5px;text-decoration:none}
+.btn.ghost{background:transparent;border:1.5px solid var(--line);color:var(--ink)}
+.btn.amber{background:var(--amber);color:#fff}
+.btn.vip{background:var(--vip);color:#fff}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.sm{padding:6px 11px;font-size:13.5px}
+
+/* home */
+.hero{display:grid;grid-template-columns:1.2fr 1fr;gap:22px;align-items:center}
+.hero h1{font-size:clamp(27px,4.2vw,40px)}
+.sec{display:flex;flex-direction:column;gap:8px;text-decoration:none;color:var(--ink)}
+.sec:hover{border-color:var(--brand)}
+.sec h3{font-size:16.5px}
+.sec p{color:var(--muted);font-size:14.5px}
+.sec .go{margin-top:auto;font-weight:600;color:var(--brand);font-size:14px}
+
+/* exercises */
+.tabs{display:flex;gap:8px;flex-wrap:wrap}
+.tab{padding:8px 14px;border-radius:999px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);font-weight:600;font-size:14.5px}
+.tab[aria-selected="true"]{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
+.qlist{display:grid;gap:14px}
+.q{display:grid;gap:12px}
+.q-top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+.q-text{font-size:16.5px;font-weight:500}
+.scheme{margin:0;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px;overflow-x:auto}
+.scheme img{display:block;max-width:100%;height:auto;margin:0 auto}
+@media (max-width:700px){.scheme img{max-width:none;margin:0}.scheme{cursor:grab}}
+.swipe{display:none;font-size:12.5px;color:var(--muted)}
+@media (max-width:700px){.swipe{display:block}}
+.schemes{display:grid;gap:8px}
+.ask{font-size:15px}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.opt{display:flex;gap:10px;align-items:center;text-align:left;width:100%;padding:10px 13px;border:1.5px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
+.opt:hover:not(:disabled){border-color:var(--brand)}
+.opt .k{font-family:var(--mono);font-weight:700;color:var(--brand);width:1.2em;flex:none}
+.opt.right{border-color:var(--ok);background:var(--ok-soft)}
+.opt.wrong{border-color:var(--bad);background:var(--bad-soft)}
+.opt:disabled{cursor:default}
+.result{padding:11px 14px;border-radius:8px;background:var(--tint);font-size:14.5px}
+.result.ok{background:var(--ok-soft)} .result.no{background:var(--bad-soft)}
+.solution{padding:12px 14px;border-radius:8px;border:1.5px dashed var(--brand);font-size:14.5px}
+.lvl{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--tint);color:var(--brand)}
+.lvl.adv{background:var(--amber-soft);color:var(--amber)}
+.banner{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:12px 16px;border-radius:var(--r);background:var(--tint);font-size:14.5px}
+
+/* docs & shop */
+.docs{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.doc{display:flex;flex-direction:column;gap:9px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.doc .tag{font-size:12px;font-weight:600;color:var(--muted)}
+.doc h3{font-size:16px;font-weight:600}
+.doc .meta{font-size:13px;color:var(--muted);margin-top:auto}
+.doc .act{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:10px}
+.lock{font-size:13px;font-weight:600}
+.lock.free{color:var(--ok)} .lock.ad{color:var(--amber)} .lock.vip{color:var(--vip)} .lock.paid{color:var(--brand)}
+.price{font-family:var(--mono);font-weight:700;font-size:17px}
+.dx{display:grid;gap:8px}
+.vids{display:grid;gap:4px;padding:10px 12px;border-radius:8px;background:var(--tint);font-size:14px}
+.vids ul{margin:0;padding:0;list-style:none;display:grid;gap:3px}
+.vids .linkbtn{font-size:14px;text-align:left}
+.vids li.locked{color:var(--muted)}
+.ad{border:1.5px dashed var(--line);border-radius:var(--r);padding:14px;text-align:center;color:var(--muted);font-size:13px}
+
+/* membership */
+.tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.tier{display:flex;flex-direction:column;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:20px}
+.tier.mark{border-color:var(--vip);box-shadow:0 0 0 3px var(--vip-soft)}
+.tier h3{font-size:19px}
+.tier .cost{font-family:var(--mono);font-size:24px;font-weight:700}
+.tier .cost small{font-family:var(--body);font-size:13px;color:var(--muted);font-weight:500}
+.tier ul{margin:0;padding-left:18px;display:grid;gap:5px;font-size:14.5px}
+.tier .btn{margin-top:auto}
+.tablebox{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14.5px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+td.c,th.c{text-align:center}
+td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+tr.you td{background:var(--tint);font-weight:600}
+.yes{color:var(--ok);font-weight:700} .no{color:var(--muted)}
+
+/* form */
+form{display:grid;gap:16px}
+.field{display:grid;gap:6px}
+.field label,.field legend{font-weight:600;font-size:14.5px}
+.field input[type=text],.field input[type=tel],.field select,.field textarea{width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
+.field textarea{min-height:80px;resize:vertical}
+fieldset{border:none;padding:0;margin:0;display:grid;gap:8px}
+.choices{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.choice{display:flex;gap:10px;align-items:flex-start;padding:12px;border:1.5px solid var(--line);border-radius:8px;cursor:pointer}
+.choice:has(input:checked){border-color:var(--brand);background:var(--tint)}
+.choice b{display:block;font-size:14.5px}
+.choice span{font-size:13px;color:var(--muted)}
+.checks{display:flex;flex-wrap:wrap;gap:8px}
+.checks label{display:flex;gap:6px;align-items:center;padding:6px 11px;border:1.5px solid var(--line);border-radius:999px;font-weight:500;font-size:14px;cursor:pointer}
+.consent{display:flex;gap:10px;align-items:flex-start;font-size:14px}
+.err{color:var(--bad);font-size:13.5px}
+
+/* teacher */
+.teacher{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:start}
+.avatar{width:110px;height:120px;border:3px solid var(--brand);border-radius:10px;display:grid;place-items:center;font-family:var(--display);font-size:42px;color:var(--brand);background:var(--tint)}
+.facts{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.fact{padding:14px;border-radius:8px;background:var(--tint)}
+.fact .v{font-family:var(--mono);font-size:22px;font-weight:700}
+.fact .l{font-size:13px;color:var(--muted)}
+blockquote{margin:0;padding:14px 16px;border-radius:8px;background:var(--tint);font-size:14.5px}
+blockquote cite{display:block;margin-top:6px;font-style:normal;font-size:13px;color:var(--muted)}
+.policy{display:grid;gap:10px;font-size:14.5px}
+.policy li{margin-bottom:4px}
+
+/* discussion & forum */
+.lessons{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.lesson{display:grid;gap:8px;align-content:start}
+.lesson h3{font-size:16px}
+.res{margin:0;padding:0;list-style:none;display:grid;gap:4px;font-size:14.5px}
+.res .linkbtn{font-size:14.5px;text-align:left}
+.res li.locked{color:var(--muted)}
+.codebox{display:grid;gap:6px;border-top:1px solid var(--line);padding-top:10px}
+.regs{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.reg{display:flex;flex-direction:column;gap:10px}
+.reg h3{font-size:18px}
+.reg ul{margin:0;padding-left:18px;display:grid;gap:5px;font-size:14.5px}
+.reg .btn{margin-top:auto;justify-self:start;align-self:flex-start}
+@media (max-width:860px){.regs{grid-template-columns:1fr}}
+.pager{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;align-items:center}
+.pager .btn{min-width:38px}
+.pghead{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.resume{padding:10px 14px;border-radius:8px;background:var(--ok-soft);color:var(--ink);font-size:14.5px}
+.tab.sm{padding:5px 11px;font-size:13.5px;font-weight:500}
+.tab[aria-pressed="true"]{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
+.disc{border-top:1px solid var(--line);padding-top:10px}
+.disc summary{cursor:pointer;font-weight:600;font-size:14px;color:var(--brand);width:max-content;max-width:100%}
+.cmts{display:grid;gap:14px}
+.disc .cmts{margin-top:12px}
+.cmt{display:grid;grid-template-columns:32px minmax(0,1fr);gap:10px}
+.cmt.best{border-left:3px solid var(--ok);padding-left:10px;margin-left:-13px}
+.av{width:32px;height:32px;border-radius:50%;background:var(--tint);color:var(--brand);display:grid;place-items:center;font-weight:700;font-size:13px}
+.av.t{background:var(--brand);color:var(--brand-ink)}
+.who{font-size:13.5px;font-weight:600;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.who time{font-weight:400;color:var(--muted);font-size:12.5px}
+.cmt p{font-size:14.5px;margin-top:2px;white-space:pre-wrap;overflow-wrap:anywhere}
+.cact{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.badge{font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--tint);color:var(--brand);white-space:nowrap}
+.badge.t{background:var(--brand);color:var(--brand-ink)} .badge.vip{background:var(--vip-soft);color:var(--vip)}
+.badge.st{background:var(--amber-soft);color:var(--amber)} .badge.ok{background:var(--ok-soft);color:var(--ok)}
+.cform{display:grid;gap:8px}
+.stars{color:#E0A100;letter-spacing:1px;font-size:14px}
+.rvavg{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.starpick{display:flex;gap:2px}
+.star{background:none;border:none;font-size:26px;line-height:1;padding:2px;color:var(--line)}
+.star.on{color:#E0A100}
+.inp,.cform textarea{width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
+.cform textarea,textarea.inp{min-height:76px;resize:vertical}
+.ftools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+.ftools .inp{max-width:280px}
+.topics{display:grid;gap:10px}
+.topic{display:grid;gap:6px;text-align:left;width:100%;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;color:var(--ink)}
+.topic:hover{border-color:var(--brand)}
+.topic h3{font-size:16px;font-weight:600}
+.tmeta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--muted)}
+.post{display:grid;gap:12px}
+.post h3{font-size:19px}
+
+/* modal, toast, floating */
+.scrim{position:fixed;inset:0;background:rgba(6,20,24,.55);display:grid;place-items:center;z-index:20;padding:16px}
+.modal{background:var(--surface);border-radius:12px;max-width:440px;width:100%;padding:22px;display:grid;gap:14px;max-height:90vh;overflow:auto}
+.fakead{aspect-ratio:16/9;max-width:100%;border-radius:8px;background:var(--tint);display:grid;place-items:center;text-align:center;color:var(--muted);font-size:13.5px;padding:12px}
+.count{font-family:var(--mono);font-size:30px;font-weight:700;color:var(--amber)}
+.qr{width:180px;height:180px;max-width:100%;margin:0 auto;border-radius:8px;border:2px dashed var(--brand);display:grid;place-items:center;text-align:center;font-size:12.5px;color:var(--muted);padding:10px;background:var(--surface)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-weight:600;font-family:var(--mono)}
+.mrow{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;z-index:30;max-width:calc(100% - 32px)}
+.zalo{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:15;border:none;border-radius:999px;padding:12px 18px;background:var(--brand);color:var(--brand-ink);font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.18)}
+
+footer{border-top:1px solid var(--line);background:var(--surface)}
+footer .wrap{padding-block:20px 90px;display:grid;gap:14px}
+.demo{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13.5px}
+.seg{display:inline-flex;border:1.5px solid var(--line);border-radius:999px;overflow:hidden}
+.seg button{border:none;background:transparent;color:var(--ink);padding:6px 12px;font-size:13.5px;font-weight:500}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.foot{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.foot a{color:var(--muted)}
+.linkbtn{background:none;border:none;color:var(--brand);text-decoration:underline;padding:0;font-size:13px}
+
+@media (max-width:860px){
+  .hero,.grid2,.teacher{grid-template-columns:1fr}
+  .grid3,.tiers,.facts{grid-template-columns:1fr}
+  .choices{grid-template-columns:1fr}
+}
+@media (max-width:560px){.ftools .inp{max-width:none}.opts{grid-template-columns:1fr}.logo span.name{font-size:15px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="wrap">
+    <div class="bar-top">
+      <a class="logo" href="#trang-chu" aria-label="Hóa Học Thầy Phòng – trang chủ">
+        <span class="tile" aria-hidden="true"><small>15</small><b>P</b></span>
+        <span class="name">Hóa Học Thầy Phòng</span>
+      </a>
+      <div class="acct" id="acct"></div>
+    </div>
+    <div class="navscroll">
+      <nav aria-label="Mục chính">
+        <a href="#trang-chu">Trang chủ</a>
+        <a href="#bai-tap">Bài tập</a>
+        <a href="#khoa-hoc">Khóa học hiện hành</a>
+        <a href="#hoi-dap">Hỏi đáp</a>
+        <a href="#tai-lieu">Tài liệu</a>
+        <a href="#mua-tai-lieu">Mua tài liệu</a>
+        <a href="#dang-ky-hoc">Đăng ký học</a>
+        <a href="#thanh-vien">Thành viên</a>
+        <a href="#gioi-thieu">Giới thiệu thầy</a>
+        <a href="#quan-tri" id="navAdmin" hidden>Quản trị</a>
+      </nav>
+    </div>
+  </div>
+</header>
+
+<main class="wrap" id="app">
+
+  <section class="view" id="v-trang-chu">
+    <div class="hero">
+      <div style="display:grid;gap:12px">
+        <span class="eyebrow">Học Hóa cùng thầy Phòng</span>
+        <h1>Luyện bài mỗi ngày, có lời giải chi tiết và lộ trình đến kỳ thi</h1>
+        <p class="lead">Bài tập cơ bản làm ngay không cần tài khoản. Bài nâng cao, tài liệu chuyên đề, đề học sinh giỏi và lớp học online đều ở đây.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <a class="btn" href="#bai-tap">Làm bài ngay</a>
+          <a class="btn ghost" href="#dang-ky-hoc">Đăng ký học</a>
+        </div>
+      </div>
+      <div class="card" style="display:grid;gap:10px">
+        <span class="eyebrow">Bài của ngày hôm nay</span>
+        <p class="q-text" id="homeQ"></p>
+        <a class="btn sm" href="#bai-tap" style="justify-self:start">Vào làm</a>
+      </div>
+    </div>
+    <div class="grid3">
+      <a class="card sec" href="#bai-tap"><h3>Bài tập luyện tập</h3><p>Cơ bản làm tự do. Nâng cao xem đáp số ngay, lời giải chi tiết mở bằng một quảng cáo ngắn.</p><span class="go">Vào luyện tập →</span></a>
+      <a class="card sec" href="#khoa-hoc"><h3>Khóa học hiện hành</h3><p>Tài liệu và video của khóa đang học. Dành cho Học viên; bạn vào giữa khóa nhập mã kích hoạt thầy gửi.</p><span class="go">Vào khóa học →</span></a>
+      <a class="card sec" href="#tai-lieu"><h3>Tài liệu học tập</h3><p>Tài liệu đọc tự do và tài liệu mở bằng quảng cáo. Thành viên VIP không cần xem quảng cáo.</p><span class="go">Xem thư viện →</span></a>
+      <a class="card sec" href="#mua-tai-lieu"><h3>Mua tài liệu</h3><p>Đề học sinh giỏi, chuyên đề đầy đủ. Thanh toán bằng mã QR, nhận file ngay.</p><span class="go">Xem tài liệu bán →</span></a>
+      <a class="card sec" href="#dang-ky-hoc"><h3>Đăng ký học</h3><p>Lớp online, học 1-1 hoặc học theo đội tuyển. Đăng ký nhanh qua Google Form.</p><span class="go">Điền đăng ký →</span></a>
+      <a class="card sec" href="#thanh-vien"><h3>Gói thành viên</h3><p>Miễn phí, VIP, Học viên. So sánh quyền lợi để chọn gói phù hợp.</p><span class="go">So sánh gói →</span></a>
+      <a class="card sec" href="#hoi-dap"><h3>Hỏi đáp</h3><p>Gặp bài khó thì đặt câu hỏi, các bạn và thầy cùng trả lời. Câu hỏi đã giải quyết được đánh dấu rõ.</p><span class="go">Vào hỏi bài →</span></a>
+      <a class="card sec" href="#gioi-thieu"><h3>Về thầy</h3><p>Kinh nghiệm giảng dạy và đánh giá của học sinh, phụ huynh.</p><span class="go">Đọc giới thiệu →</span></a>
+    </div>
+    <div class="ad">Vị trí quảng cáo hiển thị (Google AdSense) · không hiện với thành viên VIP</div>
+  </section>
+
+  <section class="view" id="v-bai-tap" hidden>
+    <div>
+      <h2 class="page">Bài tập luyện tập</h2>
+      <p class="lead">Bài cơ bản làm ngay, không cần tài khoản. Đăng nhập để lưu kết quả và bình luận từng bài.</p>
+    </div>
+    <div class="banner" id="exBanner"></div>
+    <input class="inp" type="search" id="exSearch" placeholder="Tìm bài tập theo từ khóa: peptide, SN2, pH, polime…" aria-label="Tìm bài tập theo từ khóa">
+    <div class="tabs" role="tablist" id="exTabs">
+      <button class="tab" role="tab" id="tabBasic" aria-selected="true">Cơ bản</button>
+      <button class="tab" role="tab" id="tabAdv" aria-selected="false">Nâng cao</button>
+    </div>
+    <div class="tabs" id="exCats" role="group" aria-label="Chuyên mục bài tập"></div>
+    <div class="qlist" id="qlist"></div>
+  </section>
+
+  <section class="view" id="v-khoa-hoc" hidden>
+    <div>
+      <h2 class="page">Khóa học hiện hành</h2>
+      <p class="lead">Tài liệu và video bài giảng của khóa đang học, cập nhật sau mỗi buổi. Khóa học thuộc gói Học viên (8.000.000đ/năm). Bạn vào giữa khóa liên hệ thầy để được tính phí theo số buổi còn lại và nhận mã kích hoạt.</p>
+    </div>
+    <div class="card" id="courseHead" style="display:grid;gap:10px"></div>
+    <div class="lessons" id="lessons"></div>
+  </section>
+
+  <section class="view" id="v-hoi-dap" hidden>
+    <div>
+      <h2 class="page">Hỏi đáp</h2>
+      <p class="lead">Nơi các bạn hỏi bài và giải giúp nhau. Thầy theo dõi và trả lời những câu khó; câu trả lời đúng được người hỏi đánh dấu.</p>
+    </div>
+    <div class="banner" id="forumBanner"></div>
+    <div class="ftools" id="forumTools">
+      <div class="tabs" id="forumCats" role="group" aria-label="Lọc theo lớp"></div>
+      <input class="inp" type="search" id="forumSearch" placeholder="Tìm câu hỏi…" aria-label="Tìm câu hỏi">
+    </div>
+    <div class="topics" id="forum"></div>
+  </section>
+
+  <section class="view" id="v-tai-lieu" hidden>
+    <div>
+      <h2 class="page">Tài liệu học tập</h2>
+      <p class="lead">Tài liệu đọc tự do mở sẵn cho mọi người. Tài liệu nhãn cam mở sau một quảng cáo ngắn; thành viên VIP và Học viên mở thẳng.</p>
+    </div>
+    <div class="tabs" id="docCats" role="group" aria-label="Loại tài liệu"></div>
+    <div class="docs" id="docsFree"></div>
+    <div class="ad">Vị trí quảng cáo hiển thị · không hiện với thành viên VIP</div>
+  </section>
+
+  <section class="view" id="v-mua-tai-lieu" hidden>
+    <div>
+      <h2 class="page">Mua tài liệu</h2>
+      <p class="lead">Thanh toán bằng mã QR chuyển khoản. Tài liệu gắn với tài khoản, dùng trong 12 tháng, xem online hoặc tải bản PDF đóng dấu tên người mua.</p>
+    </div>
+    <div class="banner" id="shopBanner"></div>
+    <div class="tabs" id="shopCats" role="group" aria-label="Loại tài liệu bán"></div>
+    <div class="docs" id="docsShop"></div>
+  </section>
+
+  <section class="view" id="v-dang-ky-hoc" hidden>
+    <div>
+      <h2 class="page">Đăng ký học với thầy</h2>
+      <p class="lead">Chọn hình thức học rồi bấm "Đăng ký" để điền form. Thầy sẽ liên hệ qua Zalo trong vòng 24 giờ để xếp lớp và báo học phí.</p>
+    </div>
+    <div class="regs" id="regCards"></div>
+    <div class="card" style="display:grid;gap:10px">
+      <h3 style="font-size:17px">Quyền lợi học viên</h3>
+      <ul style="margin:0;padding-left:18px;display:grid;gap:6px;font-size:14.5px">
+        <li>Gói <b>Học viên</b> (8.000.000đ/năm): học miễn phí khóa Hữu cơ của năm đăng ký, xem tài liệu và video ở Khóa học hiện hành, không quảng cáo, mọi lời giải, mở miễn phí bài giảng lý thuyết và bài tập theo chương, giảm 50% tài liệu khác.</li>
+        <li>Vào học giữa khóa: thầy tính phí theo số buổi còn lại và gửi mã kích hoạt tài khoản.</li>
+        <li>Nhận xét tiến bộ gửi phụ huynh hằng tháng.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="view" id="v-thanh-vien" hidden>
+    <div>
+      <h2 class="page">Gói thành viên</h2>
+      <p class="lead">Ba mức: Miễn phí, VIP 150.000đ/tháng (hoặc 1.500.000đ/năm) và Học viên 8.000.000đ/năm.</p>
+    </div>
+    <div class="tiers" id="tiers"></div>
+    <div class="card tablebox">
+      <table>
+        <thead><tr><th>Quyền lợi</th><th class="c">Miễn phí</th><th class="c">VIP</th><th class="c">Học viên</th></tr></thead>
+        <tbody>
+          <tr><td>Bài tập cơ bản, đáp số bài nâng cao</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c yes">✓</td></tr>
+          <tr><td>Giá</td><td class="c">0đ</td><td class="c">150.000đ/tháng hoặc 1.500.000đ/năm</td><td class="c">8.000.000đ/năm</td></tr>
+          <tr><td>Khóa Hữu cơ của năm đăng ký</td><td class="c no">—</td><td class="c no">—</td><td class="c yes">Học miễn phí</td></tr>
+          <tr><td>Bình luận bài tập, hỏi đáp, đánh giá thầy</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c yes">✓</td></tr>
+          <tr><td>Lời giải chi tiết bài nâng cao</td><td class="c">Xem 1 quảng cáo</td><td class="c yes">✓</td><td class="c yes">✓</td></tr>
+          <tr><td>Tài liệu miễn phí</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c yes">✓</td></tr>
+          <tr><td>Tài liệu mở bằng quảng cáo</td><td class="c">Xem 1 quảng cáo</td><td class="c yes">Mở thẳng, không cần xem</td><td class="c yes">Mở thẳng, không cần xem</td></tr>
+          <tr><td>Quảng cáo hiển thị trên trang</td><td class="c">Có</td><td class="c yes">Không</td><td class="c yes">Không</td></tr>
+          <tr><td>Bài giảng lý thuyết và bài tập ứng dụng; Bài tập theo chương</td><td class="c">Mua lẻ</td><td class="c">Giảm 15%</td><td class="c yes">Mở miễn phí</td></tr>
+          <tr><td>Các chuyên đề, đề thi thử, tài liệu khác</td><td class="c">Mua lẻ</td><td class="c">Giảm 15%</td><td class="c yes">Giảm 50%</td></tr>
+          <tr><td>Thời hạn tài liệu đã mở</td><td class="c">12 tháng</td><td class="c">12 tháng</td><td class="c">12 tháng</td></tr>
+          <tr><td>Gia hạn tài liệu</td><td class="c">50% giá gốc</td><td class="c">50% giá gốc</td><td class="c">50% giá gốc</td></tr>
+          <tr><td>Khóa học hiện hành (tài liệu, video)</td><td class="c">Đăng ký gói Học viên</td><td class="c">Đăng ký gói Học viên</td><td class="c yes">✓ (vào giữa khóa: mở từ buổi thầy cấp)</td></tr>
+          <tr><td>Khi gói hết hạn</td><td class="c no">—</td><td class="c">Trở về Thành viên</td><td class="c">Trở về Thành viên; gia hạn giảm 50% (4.000.000đ/năm)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="view" id="v-gioi-thieu" hidden>
+    <div class="card teacher">
+      <div class="avatar" aria-hidden="true">P</div>
+      <div style="display:grid;gap:10px">
+        <span class="eyebrow">Giáo viên Hóa học · Hà Nội</span>
+        <h2 class="page">Thầy Phòng</h2>
+        <p>Giới thiệu ngắn về thầy: <span class="fill">số năm giảng dạy, nơi công tác, chuyên môn</span>. Thầy chuyên ôn thi tốt nghiệp, đại học và bồi dưỡng học sinh giỏi Hóa, đặc biệt mảng Hóa hữu cơ và đề Olympic quốc tế.</p>
+        <p class="note">Các ô màu cam là chỗ thầy điền thông tin thật; bản mẫu không tự đặt thành tích.</p>
+      </div>
+    </div>
+    <div class="facts">
+      <div class="fact"><div class="v fill">…</div><div class="l">Năm kinh nghiệm</div></div>
+      <div class="fact"><div class="v fill">…</div><div class="l">Học sinh đạt giải HSG</div></div>
+      <div class="fact"><div class="v fill">…</div><div class="l">Học sinh đã theo học</div></div>
+    </div>
+    <div class="card" style="display:grid;gap:16px">
+      <div class="q-top"><h3 style="font-size:18px">Đánh giá về thầy</h3><span id="rvAvg" class="rvavg"></span></div>
+      <p class="note">Thành viên có tài khoản viết đánh giá; đánh giá được thầy duyệt trước khi hiện. Ba đánh giá dưới đây là ví dụ minh họa, trang thật chỉ hiện đánh giá thật.</p>
+      <div id="rvForm"></div>
+      <div class="cmts" id="reviews"></div>
+    </div>
+  </section>
+
+  <section class="view" id="v-quan-tri" hidden>
+    <div>
+      <h2 class="page">Quản trị</h2>
+      <p class="lead">Chỉ thầy đăng nhập được. Cấp quyền Học viên cho bạn vào giữa khóa, tạo mã kích hoạt và quản lý danh sách học viên.</p>
+    </div>
+    <div style="display:grid;gap:16px" id="adminBox"></div>
+  </section>
+
+  <section class="view" id="v-chinh-sach" hidden>
+    <div><h2 class="page">Chính sách và quyền riêng tư</h2><p class="lead">Bản nháp các điểm chính; cần hoàn thiện trước khi mở bán.</p></div>
+    <div class="card policy">
+      <h3 style="font-size:17px">Dữ liệu học sinh</h3>
+      <ul><li>Chỉ thu tên, biệt danh, lớp, số điện thoại phụ huynh và kết quả làm bài.</li><li>Học sinh nhỏ tuổi cần phụ huynh đồng ý khi đăng ký.</li><li>Không bán hay chia sẻ dữ liệu cho bên thứ ba; có thể yêu cầu xóa tài khoản bất kỳ lúc nào.</li></ul>
+      <h3 style="font-size:17px">Mua tài liệu và gói VIP</h3>
+      <ul><li>Tài liệu mở ngay khi hệ thống nhận được chuyển khoản đúng nội dung, gắn với tài khoản người mua.</li><li>Mỗi tài liệu được dùng trong 12 tháng kể từ ngày mở; gia hạn 12 tháng với giá bằng 50% giá gốc. Khi mua lần đầu, VIP được giảm 15%, Học viên được giảm 50% (riêng hai mục Bài giảng lý thuyết và bài tập ứng dụng, Bài tập theo chương thì Học viên được mở miễn phí); gia hạn không áp dụng giảm giá.</li><li>Một tài khoản đăng nhập tối đa 2 thiết bị cùng lúc.</li><li>File lỗi hoặc không mở được: liên hệ Zalo để được gửi lại trong 24 giờ.</li><li>Tài liệu được tải về dưới dạng PDF đóng dấu tên người mua, chỉ dùng cho cá nhân. Video bài giảng đi kèm xem trực tiếp trên trang trong thời hạn sử dụng tài liệu; link xem tự hết hạn và gắn với tài khoản người mua, không chia sẻ lại được.</li></ul>
+      <h3 style="font-size:17px">Thảo luận và hỏi đáp</h3>
+      <ul><li>Ai cũng đọc được; cần đăng nhập để bình luận, đặt câu hỏi và trả lời. Tên hiển thị là biệt danh.</li><li>Viết đúng chủ đề, lịch sự; không quảng cáo, không chia sẻ tài liệu trả phí, không đăng số điện thoại hay thông tin cá nhân.</li><li>Nội dung vi phạm bị ẩn hoặc xóa; tài khoản vi phạm nhiều lần bị khóa chức năng bình luận. Mọi người có thể bấm "Báo cáo" để thầy xem xét.</li></ul>
+      <h3 style="font-size:17px">Gói VIP và Học viên</h3>
+      <ul><li>Gói VIP 150.000đ/tháng hoặc 1.500.000đ/năm; hết hạn thì tài khoản trở về Thành viên thường.</li><li>Gói Học viên 8.000.000đ/năm: học miễn phí khóa Hữu cơ của năm đăng ký; mở miễn phí toàn bộ mục Bài giảng lý thuyết và bài tập ứng dụng, Bài tập theo chương trong thời hạn gói; các mục còn lại giảm 50% khi mua.</li><li>Gói Học viên hết hạn: tài khoản trở về Thành viên thường (tài liệu mở bằng gói không xem được nữa, tài liệu đã mua lẻ vẫn giữ đến hết hạn riêng); gia hạn gói được giảm 50%, còn 4.000.000đ/năm.</li></ul>
+      <h3 style="font-size:17px">Khóa học hiện hành</h3>
+      <ul><li>Khóa học hiện hành thuộc gói Học viên (8.000.000đ/năm): Học viên đăng ký từ đầu xem toàn bộ tài liệu, video của khóa.</li><li>Học viên vào giữa khóa được thầy tính phí theo số buổi còn lại và cấp quyền (hoặc gửi mã kích hoạt), mở từ buổi được cấp; buổi cũ có thể mua lẻ hoặc được thầy tặng.</li></ul>
+      <h3 style="font-size:17px">Đánh giá về thầy</h3>
+      <ul><li>Mỗi tài khoản một đánh giá, có thể sửa. Đánh giá được duyệt trước khi hiện; không đăng thông tin cá nhân của người khác.</li></ul>
+      <h3 style="font-size:17px">Quảng cáo</h3>
+      <ul><li>Quảng cáo do Google cung cấp. Không bắt buộc bấm vào quảng cáo.</li><li>Xem xong quảng cáo luôn nhận đúng nội dung đã chọn.</li></ul>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="demo">
+      <b>Xem bản mẫu với vai trò:</b>
+      <div class="seg" role="group" aria-label="Vai trò minh họa" id="roleSeg">
+        <button data-r="guest">Khách</button><button data-r="member">Thành viên</button><button data-r="vip">VIP</button><button data-r="student">Học viên</button><button data-r="teacher">Thầy</button>
+      </div>
+      <button class="linkbtn" id="btnReset">Đặt lại bản mẫu</button>
+    </div>
+    <div class="foot">
+      <span>© Hóa Học Thầy Phòng</span>
+      <a href="#chinh-sach">Chính sách và quyền riêng tư</a>
+      <span>Thông báo website TMĐT với Bộ Công Thương: <span class="fill">bổ sung khi hoàn tất</span></span>
+      <span>Bản mẫu minh họa: thanh toán, quảng cáo và tải file đều là mô phỏng.</span>
+    </div>
+  </div>
+</footer>
+
+<button class="zalo" id="btnZalo" type="button">Zalo thầy</button>
+
+<div class="scrim" id="modal" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle" id="modalBox"></div></div>
+
+<script src="config.js"></script>
+<script src="baitap.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
