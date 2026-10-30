@@ -1166,17 +1166,17 @@
     if (!bank) { openModal(function (box) { head(box, "Thanh toán", title); box.appendChild(el("p", null, "Thầy chưa cấu hình tài khoản nhận tiền. Vui lòng nhắn Zalo cho thầy.")); row(box, [button("", "Đóng", closeModal)]); }); return; }
     sb.rpc("create_order", { p_type: type, p_item: itemId == null ? null : itemId }).then(function (r) {
       if (r.error) { sbErr(r.error, "Chưa tạo được đơn"); return; }
-      var o = r.data;
+      var o = r.data, memo = ((bank.contentPrefix || "") + " " + o.code).trim();
       openModal(function (box) {
         head(box, "Thanh toán bằng mã QR", title);
-        var img = el("img"); img.alt = "Mã QR chuyển khoản " + vnd(o.amount) + ", nội dung " + o.code;
-        img.src = "https://img.vietqr.io/image/" + encodeURIComponent(bank.bin) + "-" + encodeURIComponent(bank.accountNo) + "-compact2.png?amount=" + o.amount + "&addInfo=" + encodeURIComponent(o.code) + "&accountName=" + encodeURIComponent(bank.accountName || "");
+        var img = el("img"); img.alt = "Mã QR chuyển khoản " + vnd(o.amount) + ", nội dung " + memo;
+        img.src = "https://img.vietqr.io/image/" + encodeURIComponent(bank.bin) + "-" + encodeURIComponent(bank.accountNo) + "-compact2.png?amount=" + o.amount + "&addInfo=" + encodeURIComponent(memo) + "&accountName=" + encodeURIComponent(bank.accountName || "");
         img.style.cssText = "width:240px;max-width:100%;margin:0 auto;display:block;border-radius:8px;background:#fff";
         box.appendChild(img);
         var dl = el("dl", "kv");
-        [["Số tiền", vnd(o.amount)], ["Nội dung", o.code], ["Ngân hàng", bank.bankName || ""], ["Số tài khoản", bank.accountNo], ["Chủ tài khoản", bank.accountName || ""]].forEach(function (p) { dl.appendChild(el("dt", null, p[0])); dl.appendChild(el("dd", null, p[1])); });
+        [["Số tiền", vnd(o.amount)], ["Nội dung", memo], ["Ngân hàng", bank.bankName || ""], ["Số tài khoản", bank.accountNo], ["Chủ tài khoản", bank.accountName || ""]].forEach(function (p) { dl.appendChild(el("dt", null, p[0])); dl.appendChild(el("dd", null, p[1])); });
         box.appendChild(dl);
-        var stt = el("p", "note", "Quét mã bằng app ngân hàng. Giữ nguyên nội dung " + o.code + " để hệ thống tự nhận. Đang chờ tiền về…"); box.appendChild(stt);
+        var stt = el("p", "note", "Quét mã bằng app ngân hàng. Giữ nguyên nội dung " + memo + " để hệ thống tự nhận. Đang chờ tiền về…"); box.appendChild(stt);
         row(box, [button("ghost", "Đóng", closeModal)]);
         var tries = 0;
         clearInterval(timer);

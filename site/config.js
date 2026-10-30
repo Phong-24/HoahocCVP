@@ -16,10 +16,12 @@ window.HHTP_CONFIG = {
 
   /* Tài khoản nhận tiền (hiện trên mã QR). bin: mã ngân hàng theo VietQR, ví dụ MB = 970422, Vietcombank = 970436 */
   bank: {
-    bin: "",
-    bankName: "",
-    accountNo: "",
-    accountName: ""
+    bin: "970415",
+    bankName: "VietinBank",
+    accountNo: "109868736015",
+    accountName: "CHU VAN PHONG",
+    /* Mã tài khoản phụ (TKP) trên SePay nếu có; sẽ được ghép trước mã đơn trong nội dung chuyển khoản */
+    contentPrefix: ""
   },
 
   /* Thông tin hiện ở chân trang */
