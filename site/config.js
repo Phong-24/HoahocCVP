@@ -20,8 +20,8 @@ window.HHTP_CONFIG = {
     bankName: "VietinBank",
     accountNo: "109868736015",
     accountName: "CHU VAN PHONG",
-    /* Mã tài khoản phụ (TKP) trên SePay nếu có; sẽ được ghép trước mã đơn trong nội dung chuyển khoản */
-    contentPrefix: ""
+    /* VietinBank qua SePay: nội dung chuyển khoản bắt buộc bắt đầu bằng SEVQR, mã đơn ghép phía sau */
+    contentPrefix: "SEVQR"
   },
 
   /* Thông tin hiện ở chân trang */
