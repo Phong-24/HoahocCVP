@@ -13,7 +13,7 @@ Trang web học Hóa của thầy Phòng: bài tập (Cơ bản / Nâng cao, có
 
 ## Trạng thái
 
-- Đã có: giao diện đầy đủ ở chế độ mẫu; cơ sở dữ liệu Supabase.
+- Đã có: giao diện đầy đủ; cơ sở dữ liệu Supabase; đăng nhập email và Google; thanh toán QR tự động qua SePay.
 - Đang làm: nối giao diện với Supabase (đăng nhập, lưu bài làm, bình luận, hỏi đáp, đánh giá, quản trị), thanh toán QR, PDF đóng dấu tên, video Bunny Stream.
 
 Khi `supabaseUrl` trong `site/config.js` còn trống, trang chạy ở chế độ mẫu: dữ liệu lưu tạm trên trình duyệt, thanh toán là mô phỏng.
