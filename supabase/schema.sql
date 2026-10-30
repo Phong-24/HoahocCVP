@@ -355,6 +355,8 @@ create table if not exists public.shop_docs (
   published boolean not null default true,
   created_at timestamptz not null default now()
 );
+-- Link xem thử (ai cũng xem được, chỉ xem online)
+alter table public.shop_docs add column if not exists preview_url text;
 create table if not exists public.shop_videos (
   id bigint generated always as identity primary key,
   doc_id bigint not null references shop_docs(id) on delete cascade,

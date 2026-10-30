@@ -55,7 +55,7 @@
   var SHOP_CATS = ["Tất cả", "Bài giảng lý thuyết và bài tập ứng dụng", "Bài tập theo chương", "Các chuyên đề", "Đề thi thử", "Tài liệu khác"];
   var STUDENT_FREE = ["Bài giảng lý thuyết và bài tập ứng dụng", "Bài tập theo chương"];
   var SHOP = [
-    { id: "aminofull", dl: 1248, cat: "Bài giảng lý thuyết và bài tập ứng dụng", tag: "Bài giảng · Lớp 12", title: "Amino acid và peptide – lý thuyết và bài tập ứng dụng", pages: 38, price: 59000, vids: ["Amino acid: tính axit–bazơ và pI", "Peptide: cấu tạo và thủy phân"] },
+    { id: "aminofull", dl: 1248, preview: "https://drive.google.com/file/d/MAU/view", cat: "Bài giảng lý thuyết và bài tập ứng dụng", tag: "Bài giảng · Lớp 12", title: "Amino acid và peptide – lý thuyết và bài tập ứng dụng", pages: 38, price: 59000, vids: ["Amino acid: tính axit–bazơ và pI", "Peptide: cấu tạo và thủy phân"] },
     { id: "carbo", dl: 856, cat: "Bài giảng lý thuyết và bài tập ứng dụng", tag: "Bài giảng · Lớp 12", title: "Carbohydrate – lý thuyết và bài tập ứng dụng", pages: 42, price: 69000, vids: ["Monosaccharide và cấu trúc vòng", "Disaccharide, polysaccharide"] },
     { id: "chuong-ancol", dl: 2310, cat: "Bài tập theo chương", tag: "Bài tập · Lớp 11", title: "Bài tập chương Ancol – Phenol, có lời giải", pages: 24, price: 39000 },
     { id: "chuong-amin", dl: 1902, cat: "Bài tập theo chương", tag: "Bài tập · Lớp 12", title: "Bài tập chương Amin – Amino acid – Protein, có lời giải", pages: 28, price: 39000 },
@@ -138,7 +138,7 @@
 
   /* ================= hộp thoại ================= */
   var timer = null;
-  function closeModal() { clearInterval(timer); $("modal").hidden = true; $("modalBox").innerHTML = ""; }
+  function closeModal() { clearInterval(timer); $("modal").hidden = true; $("modalBox").innerHTML = ""; $("modalBox").classList.remove("wide"); }
   function openModal(build) { var box = $("modalBox"); box.innerHTML = ""; build(box); $("modal").hidden = false; var f = box.querySelector("button,input"); if (f) f.focus(); }
   $("modal").addEventListener("click", function (e) { if (e.target === $("modal")) closeModal(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !$("modal").hidden) closeModal(); });
@@ -489,9 +489,30 @@
   function download(d) {
     if (LIVE) { sb.rpc("record_download", { p_doc: d.dbId }).then(function (r) { if (r.error) { sbErr(r.error); return; } d.dl = Number(r.data) || d.dl + 1; renderShop(); openFile(d); }); return; }
     st.dl = st.dl || {}; st.dl[d.id] = (st.dl[d.id] || 0) + 1; save(); openFile(d); renderShop(); }
+  function previewUrl(u) {
+    if (!u) return "";
+    var m = u.match(/drive\.google\.com\/file\/d\/([\w-]+)/) || u.match(/drive\.google\.com\/(?:open|uc)\?(?:.*&)?id=([\w-]+)/);
+    if (m) return "https://drive.google.com/file/d/" + m[1] + "/preview";
+    var g = u.match(/docs\.google\.com\/(document|presentation|spreadsheets)\/d\/([\w-]+)/);
+    if (g) return "https://docs.google.com/" + g[1] + "/d/" + g[2] + "/preview";
+    return u;
+  }
+  function showPreview(d) {
+    openModal(function (box) {
+      box.classList.add("wide");
+      head(box, "Xem thử", d.title);
+      var fr = el("iframe", "pv"); fr.src = previewUrl(d.preview); fr.title = "Xem thử: " + d.title; fr.setAttribute("allow", "autoplay"); fr.setAttribute("referrerpolicy", "no-referrer");
+      box.appendChild(fr);
+      box.appendChild(el("p", "note", "Bản xem thử, chỉ xem trực tuyến. Mua tài liệu để xem toàn bộ và tải PDF."));
+      row(box, [button("ghost", "Đóng", closeModal)]);
+    });
+  }
   function shopExtra(c, d, unlocked) {
     var x = el("div", "dx");
-    x.appendChild(el("span", "note", dlCount(d).toLocaleString("vi-VN") + " lượt tải"));
+    var top = el("div", "mrow"); top.style.cssText = "justify-content:space-between;align-items:center";
+    top.appendChild(el("span", "note", dlCount(d).toLocaleString("vi-VN") + " lượt tải"));
+    if (d.preview) top.appendChild(button("ghost sm", "👁 Xem thử", function () { showPreview(d); }));
+    x.appendChild(top);
     if (d.vids) {
       var v = el("div", "vids");
       v.appendChild(el("b", null, "Video đính kèm (" + d.vids.length + ")"));
@@ -712,7 +733,7 @@
   function renderAdmin() {
     var box = $("adminBox"); box.innerHTML = "";
     if (st.role !== "teacher") { box.appendChild(el("p", "card note", LIVE ? "Trang này chỉ dành cho thầy." : "Trang này chỉ dành cho thầy. Trong bản mẫu, chọn vai trò \"Thầy\" ở cuối trang để xem.")); return; }
-    if (LIVE) { renderAdminLive(box); renderPayments(box); renderModeration(box); return; }
+    if (LIVE) { renderAdminLive(box); renderShopAdmin(box); renderPayments(box); renderModeration(box); return; }
     var L = accounts(), nextLesson = COURSE.lessons.length + 1;
     var g = el("div", "grid2"); g.style.alignItems = "start";
     /* cấp quyền */
@@ -1203,17 +1224,33 @@
     });
   }
   function loadShop() {
-    var q = [sb.from("shop_docs").select("id,category,tag,title,pages,price").order("id"), sb.from("shop_videos").select("doc_id,title,position").order("position"), sb.from("shop_doc_stats").select("id,downloads")];
+    var q = [sb.from("shop_docs").select("id,category,tag,title,pages,price,preview_url").order("id"), sb.from("shop_videos").select("doc_id,title,position").order("position"), sb.from("shop_doc_stats").select("id,downloads")];
     if (LV.prof) q.push(sb.from("doc_access").select("doc_id,expires_at").eq("user_id", LV.prof.id));
     return Promise.all(q).then(function (R) {
       var vids = R[1].data || [], stats = {}; (R[2].data || []).forEach(function (s) { stats[s.id] = s.downloads; });
       SHOP = (R[0].data || []).map(function (d) {
         var v = vids.filter(function (x) { return x.doc_id === d.id; }).map(function (x) { return x.title; });
-        return { id: "s" + d.id, dbId: d.id, cat: d.category, tag: d.tag || d.category, title: d.title, pages: d.pages, price: d.price, vids: v.length ? v : undefined, dl: stats[d.id] || 0 };
+        return { id: "s" + d.id, dbId: d.id, cat: d.category, tag: d.tag || d.category, title: d.title, pages: d.pages, price: d.price, preview: d.preview_url || "", vids: v.length ? v : undefined, dl: stats[d.id] || 0 };
       });
       st.bought = {}; st.dl = {};
       (R[3] && R[3].data || []).forEach(function (a) { st.bought["s" + a.doc_id] = a.expires_at; });
       if (st.role === "teacher") SHOP.forEach(function (d) { st.bought[d.id] = "2099-12-31T00:00:00Z"; });
+    });
+  }
+  function renderShopAdmin(box) {
+    var c = el("div", "card tablebox"); c.style.cssText = "display:grid;gap:10px"; box.appendChild(c);
+    c.appendChild(el("h3", null, "Tài liệu bán: link xem thử")); c.lastChild.style.fontSize = "17px";
+    c.appendChild(el("p", "note", "Dán link Google Drive của bản xem thử (vài trang đầu). Trong Google Drive: Chia sẻ → Bất kỳ ai có đường liên kết → Người xem; bấm bánh răng, bỏ tick “Người xem có thể thấy tùy chọn tải xuống, in và sao chép”. Để trống nếu không có bản xem thử."));
+    sb.from("shop_docs").select("id,title,preview_url").order("id").then(function (r) {
+      var t = el("table"); var hr = el("tr"); ["Tài liệu", "Link xem thử", ""].forEach(function (x) { hr.appendChild(el("th", null, x)); }); var th = el("thead"); th.appendChild(hr); t.appendChild(th);
+      var tb = el("tbody");
+      (r.data || []).forEach(function (d) {
+        var tr = el("tr"); tr.appendChild(el("td", null, d.title));
+        var td = el("td"); var inp = el("input", "inp"); inp.type = "url"; inp.placeholder = "https://drive.google.com/file/d/…"; inp.value = d.preview_url || ""; inp.setAttribute("aria-label", "Link xem thử: " + d.title); inp.style.minWidth = "240px"; td.appendChild(inp); tr.appendChild(td);
+        var td2 = el("td"); td2.appendChild(button("sm", "Lưu", function () { sb.from("shop_docs").update({ preview_url: inp.value.trim() || null }).eq("id", d.id).then(function (x) { if (x.error) { sbErr(x.error); return; } toast("Đã lưu link xem thử"); loadShop().then(renderShop); }); })); tr.appendChild(td2);
+        tb.appendChild(tr);
+      });
+      t.appendChild(tb); c.appendChild(t);
     });
   }
   function renderPayments(box) {
