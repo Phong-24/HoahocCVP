@@ -190,15 +190,19 @@ language sql security definer set search_path = public as $$
   insert into unlocks (user_id, kind, ref_id) values (auth.uid(), p_kind, p_ref) on conflict do nothing;
 $$;
 
--- Lấy lời giải chi tiết / đáp án tự luận: VIP, Học viên, thầy, hoặc đã xem quảng cáo
-create or replace function public.get_solution(p_ex bigint) returns jsonb
+-- Lấy lời giải chi tiết / đáp án tự luận: VIP, Học viên, thầy, đã xem quảng cáo (p_via_ad), hoặc đã mở trước đó
+drop function if exists public.get_solution(bigint);
+create or replace function public.get_solution(p_ex bigint, p_via_ad boolean default false) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare k exercise_keys; r text;
 begin
   r := coalesce(role_of(auth.uid()), 'guest');
-  if r not in ('vip', 'student', 'teacher')
+  if r not in ('vip', 'student', 'teacher') and not p_via_ad
      and not exists (select 1 from unlocks where user_id = auth.uid() and kind = 'solution' and ref_id = p_ex) then
     raise exception 'Cần xem quảng cáo hoặc là VIP để mở lời giải';
+  end if;
+  if p_via_ad and auth.uid() is not null then
+    insert into unlocks (user_id, kind, ref_id) values (auth.uid(), 'solution', p_ex) on conflict do nothing;
   end if;
   select * into k from exercise_keys where exercise_id = p_ex;
   return jsonb_build_object('solution', k.solution, 'answer_images', k.answer_images, 'short_answer', k.short_answer);

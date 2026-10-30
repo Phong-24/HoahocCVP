@@ -4,8 +4,8 @@
   Khi supabaseUrl còn trống, trang chạy ở CHẾ ĐỘ MẪU: dữ liệu lưu tạm trên trình duyệt, thanh toán là mô phỏng.
 */
 window.HHTP_CONFIG = {
-  supabaseUrl: "",
-  supabaseAnonKey: "",
+  supabaseUrl: "https://gslzetfiospsuveufmpr.supabase.co",
+  supabaseAnonKey: "sb_publishable_a2C6G585tACFQpTgdxXUEw_PXxi4S58",
 
   /* Link Google Form cho 3 mục Đăng ký học */
   forms: {

@@ -51,11 +51,36 @@ Gửi Claude: địa chỉ trang ở Bước 1, Project URL và anon public key 
 
 ---
 
+## Bước 3. Nạp dữ liệu ban đầu và cập nhật cơ sở dữ liệu
+
+1. Supabase → **SQL Editor** → **New query**.
+2. Dán toàn bộ file `supabase/buoc3.sql` (Claude gửi kèm) → **Run** → nếu hỏi thì chọn **Run and enable RLS**.
+   File này cập nhật cơ sở dữ liệu và nạp bài tập, tài liệu, khóa học mẫu. **Chỉ chạy một lần** (chạy lần nữa sẽ nhân đôi bài mẫu).
+
+## Bước 4. Bật đăng nhập bằng email
+
+1. Supabase → **Authentication** → **URL Configuration**.
+2. **Site URL:** `https://hoahoccvp.pages.dev` → **Save**.
+3. **Redirect URLs** → **Add URL:** `https://hoahoccvp.pages.dev/**` → **Save**.
+
+Lưu ý: dịch vụ gửi email có sẵn của Supabase chỉ gửi được vài email mỗi giờ, đủ để thử. Trước khi mở cho học sinh sẽ bật đăng nhập Google (không giới hạn).
+
+## Bước 5. Đặt tài khoản của thầy làm quản trị
+
+1. Mở https://hoahoccvp.pages.dev → **Đăng nhập** → nhập email của thầy → mở hộp thư, bấm link **Log In**.
+2. Quay lại Supabase → **SQL Editor** → **New query**, dán dòng dưới (thay email của thầy) → **Run**:
+
+   ```sql
+   update profiles set is_teacher = true where id = (select id from auth.users where email = 'EMAIL_CUA_THAY@gmail.com');
+   ```
+3. Tải lại trang: góc trên hiện **Thầy · Quản trị**, menu có thêm **Quản trị**.
+
+---
+
 ## Các bước tiếp theo (Claude sẽ gửi hướng dẫn chi tiết khi tới lượt)
 
-3. Bật đăng nhập Google (và Zalo nếu cần) trong Supabase.
-4. Đặt tài khoản của thầy làm quản trị.
-5. Tạo kho lưu file PDF (Cloudflare R2) và thư viện video (Bunny Stream).
-6. Kết nối nhận tiền QR tự động vào tài khoản ngân hàng cá nhân.
-7. Mua và gắn tên miền riêng.
-8. Gắn link 3 Google Form đăng ký học, số Zalo, thông tin giới thiệu.
+6. Bật đăng nhập Google.
+7. Tạo kho lưu file PDF (Cloudflare R2) và thư viện video (Bunny Stream).
+8. Kết nối nhận tiền QR tự động vào tài khoản ngân hàng cá nhân.
+9. Mua và gắn tên miền riêng.
+10. Gắn link 3 Google Form đăng ký học, số Zalo, thông tin giới thiệu.

@@ -112,14 +112,19 @@
   ];
   var ROLES = { guest: "Khách", member: "Thành viên", vip: "VIP", student: "Học viên", teacher: "Thầy (quản trị)" };
   var VIP_QUOTA = 5;
+  var CFG = window.HHTP_CONFIG || {};
+  var LIVE = !!(CFG.supabaseUrl && CFG.supabaseAnonKey && window.supabase);
+  var sb = LIVE ? window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey) : null;
+  if (LIVE) { BASIC = []; ADV = []; CM_SEED = {}; COURSE = { name: "Khóa học hiện hành", desc: "Đang tải…", meta: [], lessons: [] }; }
 
   /* ================= trạng thái ================= */
   var KEY = "hhtp-demo-v3";
   function fresh() { return { role: "guest", nick: "", pts: 0, correct: 0, ans: {}, sol: {}, opened: {}, bought: {}, vipUsed: 0, studentExpired: false, dl: {}, done: {}, exPage: {}, access: null, lessonBought: {}, codes: [], accounts: null, review: null, cm: {}, topics: [], rep: {}, solved: {}, likes: {} }; }
   var st = fresh();
-  try { var raw = localStorage.getItem(KEY); if (raw) { var o = JSON.parse(raw); for (var k in o) st[k] = o[k]; } } catch (e) {}
+  if (!LIVE) { try { var raw = localStorage.getItem(KEY); if (raw) { var o = JSON.parse(raw); for (var k in o) st[k] = o[k]; } } catch (e) {} }
   if (st.role === "guest") { st.ans = {}; st.sol = {}; st.done = {}; st.exPage = {}; }
   function save() {
+    if (LIVE) { try { localStorage.setItem("hhtp-live", JSON.stringify({ exPage: st.exPage })); } catch (e) {} return; }
     var o = st;
     if (st.role === "guest") { o = {}; for (var k in st) o[k] = st[k]; o.ans = {}; o.sol = {}; o.done = {}; o.exPage = {}; o.correct = 0; }
     try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) {}
@@ -156,6 +161,7 @@
   }
 
   function showLogin(reason, onDone) {
+    if (LIVE) { liveLogin(reason, onDone); return; }
     openModal(function (box) {
       head(box, "Đăng nhập", reason || "Tạo tài khoản miễn phí");
       box.appendChild(el("p", "note", "Không cần mật khẩu mới. Biệt danh hiện khi bình luận, hỏi đáp và đánh giá (không cần dùng họ tên thật)."));
@@ -169,6 +175,7 @@
   }
 
   function showQR(title, amount, onPaid) {
+    if (LIVE) { openModal(function (box) { head(box, "Thanh toán", title); box.appendChild(el("p", null, "Thanh toán QR tự động đang được kết nối và sẽ mở trong thời gian tới. Cần gấp, vui lòng nhắn Zalo cho thầy.")); row(box, [button("", "Đóng", closeModal)]); }); return; }
     var code = "HHTP" + Math.floor(1000 + Math.random() * 9000);
     openModal(function (box) {
       head(box, "Thanh toán bằng mã QR", title);
@@ -186,7 +193,7 @@
   var exCat = "Tất cả";
   $("tabBasic").addEventListener("click", function () { tab = "basic"; exCat = "Tất cả"; renderEx(); });
   $("tabAdv").addEventListener("click", function () { tab = "adv"; exCat = "Tất cả"; renderEx(); });
-  var ESSAY = (window.BAITAP_TL || []).map(function (q) { q.g = q.g || "Chuỗi"; q.essay = true; return q; });
+  var ESSAY = LIVE ? [] : (window.BAITAP_TL || []).map(function (q) { q.g = q.g || "Chuỗi"; q.essay = true; return q; });
 
   var PER = { basic: 5, adv: 2 }, exQ = "", pageNow = {};
   function fold(x) { return String(x).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d"); }
@@ -265,16 +272,18 @@
       opts.appendChild(b);
     });
     c.appendChild(opts);
+    if (picked != null && LIVE && q.a == null) { fetchKey(q); c.appendChild(el("p", "note", "Đang tải đáp án…")); c.appendChild(discussion(q, picked)); return c; }
     if (picked != null) {
       var ok = picked === q.a;
       c.appendChild(el("div", "result " + (ok ? "ok" : "no"), (ok ? "Chính xác. " : "Chưa đúng. ") + (adv ? "Đáp số: " + q.ans + "." : q.e)));
       if (adv) {
-        if (st.sol[q.id] || noAds()) {
+        if ((st.sol[q.id] || noAds()) && LIVE && !q.s) { fetchSolution(q, false); c.appendChild(el("p", "note", "Đang tải lời giải…")); }
+        else if (st.sol[q.id] || noAds()) {
           var s = el("div", "solution"); s.appendChild(el("b", null, "Lời giải chi tiết"));
           var ol = el("ol"); ol.style.cssText = "margin:6px 0 0;padding-left:20px;display:grid;gap:4px"; q.s.forEach(function (x) { ol.appendChild(el("li", null, x)); }); s.appendChild(ol); c.appendChild(s);
         } else {
           var r = el("div", "mrow"); r.style.justifyContent = "flex-start";
-          r.appendChild(button("amber sm", "Xem lời giải chi tiết (1 quảng cáo)", function () { showAd("Lời giải: Nâng cao · Câu " + (i + 1), function () { st.sol[q.id] = true; save(); renderEx(); toast("Đã mở lời giải"); }); }));
+          r.appendChild(button("amber sm", "Xem lời giải chi tiết (1 quảng cáo)", function () { showAd("Lời giải: Nâng cao · Câu " + (i + 1), function () { st.sol[q.id] = true; save(); if (LIVE) { q._s = false; fetchSolution(q, true); } else renderEx(); toast("Đã mở lời giải"); }); }));
           var up = el("a", "btn sm ghost", "VIP: xem không cần quảng cáo"); up.href = "#thanh-vien"; r.appendChild(up);
           c.appendChild(r);
         }
@@ -296,21 +305,22 @@
     c.appendChild(el("h3", null, "Tổng hợp " + q.name)); c.lastChild.style.fontSize = "17px";
     c.appendChild(el("p", null, q.text));
     c.appendChild(schemes(q.de, "Sơ đồ tổng hợp " + q.name));
-    var ask = el("p", "ask"); ask.appendChild(el("b", null, "Yêu cầu: ")); ask.appendChild(document.createTextNode("xác định công thức cấu tạo các chất được đánh số trong sơ đồ.")); c.appendChild(ask);
+    var ask = el("p", "ask"); ask.appendChild(el("b", null, "Yêu cầu: ")); ask.appendChild(document.createTextNode(q.ask || "xác định công thức cấu tạo các chất được đánh số trong sơ đồ.")); c.appendChild(ask);
     var shown = st.sol[q.id] || noAds();
-    if (shown) {
+    if (shown && LIVE && !q.da) { fetchSolution(q, false); c.appendChild(el("p", "note", "Đang tải đáp án…")); }
+    else if (shown) {
       var s = el("div", "solution"); s.style.display = "grid"; s.style.gap = "8px"; s.appendChild(el("b", null, "Đáp án"));
       s.appendChild(schemes(q.da, "Đáp án bài " + q.name)); c.appendChild(s);
     } else {
       var r = el("div", "mrow"); r.style.justifyContent = "flex-start";
-      r.appendChild(button("amber sm", "Xem đáp án (1 quảng cáo)", function () { showAd("Đáp án: Tổng hợp " + q.name, function () { st.sol[q.id] = true; save(); renderEx(); toast("Đã mở đáp án"); }); }));
+      r.appendChild(button("amber sm", "Xem đáp án (1 quảng cáo)", function () { showAd("Đáp án: Tổng hợp " + q.name, function () { st.sol[q.id] = true; save(); if (LIVE) { q._s = false; fetchSolution(q, true); } else renderEx(); toast("Đã mở đáp án"); }); }));
       var up = el("a", "btn sm ghost", "VIP: xem không cần quảng cáo"); up.href = "#thanh-vien"; r.appendChild(up);
       c.appendChild(r);
     }
     if (logged()) {
       var dn = el("div", "mrow"); dn.style.justifyContent = "flex-start";
       if (st.done[q.id]) dn.appendChild(el("span", "badge ok", "✓ Đã làm xong"));
-      else dn.appendChild(button("ghost sm", "Đánh dấu đã làm xong", function () { st.done[q.id] = true; save(); renderEx(); toast("Đã ghi nhớ bài làm"); }));
+      else dn.appendChild(button("ghost sm", "Đánh dấu đã làm xong", function () { if (LIVE) sb.rpc("mark_done", { p_ex: q.db }).then(function (r) { if (r.error) sbErr(r.error); }); st.done[q.id] = true; save(); renderEx(); toast("Đã ghi nhớ bài làm"); }));
       c.appendChild(dn);
     }
     c.appendChild(discussion(q, shown ? 1 : null));
@@ -319,6 +329,17 @@
 
   function answer(q, j) {
     if (st.ans[q.id] != null) return;
+    if (LIVE) {
+      if (q._busy) return; q._busy = true;
+      sb.rpc("submit_answer", { p_ex: q.db, p_choice: j }).then(function (r) {
+        q._busy = false;
+        if (r.error) { sbErr(r.error, "Chưa gửi được bài làm"); return; }
+        st.ans[q.id] = j; q.a = r.data.answer; q.e = r.data.explain; q.ans = r.data.short_answer; q._k = true;
+        if (r.data.correct && logged()) st.correct++;
+        renderEx(); renderAcct(); toast(r.data.correct ? "Chính xác" : "Chưa đúng, xem giải thích bên dưới");
+      });
+      return;
+    }
     st.ans[q.id] = j; var ok = j === q.a;
     if (ok && logged()) { st.pts += ADV.indexOf(q) >= 0 ? 20 : 10; st.correct++; }
     save(); renderEx(); renderAcct();
@@ -365,6 +386,7 @@
     list.forEach(function (c) { box.appendChild(cmtEl(c)); });
     if (!list.length) box.appendChild(el("p", "note", "Chưa có bình luận. Hãy hỏi thêm hoặc chia sẻ cách giải của bạn."));
     box.appendChild(composer("Hỏi thêm hoặc chia sẻ cách giải khác…", "Bình luận bài này", function (v) {
+      if (LIVE) { sb.from("comments").insert({ exercise_id: q.db, user_id: LV.prof.id, body: v }).then(function (r) { if (r.error) { sbErr(r.error, "Chưa gửi được"); return; } openDisc[q.id] = true; loadComments().then(function () { renderEx(); toast("Đã gửi bình luận"); }); }); return; }
       (st.cm[q.id] = st.cm[q.id] || []).push(me(v)); openDisc[q.id] = true; save(); renderEx(); toast("Đã gửi bình luận");
     }));
     dt.appendChild(box); return dt;
@@ -640,7 +662,9 @@
       var sb = el("button", "btn sm", "Kích hoạt"); sb.type = "submit";
       f.appendChild(inp); f.appendChild(sb); cw.appendChild(f);
       var er = el("p", "err"); er.hidden = true; cw.appendChild(er);
-      f.addEventListener("submit", function (e) { e.preventDefault(); if (!logged()) { showLogin("Đăng nhập để nhập mã kích hoạt"); return; } var m = activateCode(inp.value); if (m) { er.textContent = m; er.hidden = false; } else toast("Đã kích hoạt gói Học viên"); });
+      f.addEventListener("submit", function (e) { e.preventDefault(); if (!logged()) { showLogin("Đăng nhập để nhập mã kích hoạt"); return; }
+        if (LIVE) { liveRedeem(inp.value).then(function (m) { if (m) { er.textContent = m; er.hidden = false; } else toast("Đã kích hoạt gói Học viên"); }); return; }
+        var m = activateCode(inp.value); if (m) { er.textContent = m; er.hidden = false; } else toast("Đã kích hoạt gói Học viên"); });
       hd.appendChild(cw);
     }
     var box = $("lessons"); box.innerHTML = "";
@@ -682,7 +706,8 @@
   function fld(box, label, node) { var f = el("div", "field"); var lb = el("label", null, label); lb.htmlFor = node.id; f.appendChild(lb); f.appendChild(node); box.appendChild(f); return node; }
   function renderAdmin() {
     var box = $("adminBox"); box.innerHTML = "";
-    if (st.role !== "teacher") { box.appendChild(el("p", "card note", "Trang này chỉ dành cho thầy. Trong bản mẫu, chọn vai trò \"Thầy\" ở cuối trang để xem.")); return; }
+    if (st.role !== "teacher") { box.appendChild(el("p", "card note", LIVE ? "Trang này chỉ dành cho thầy." : "Trang này chỉ dành cho thầy. Trong bản mẫu, chọn vai trò \"Thầy\" ở cuối trang để xem.")); return; }
+    if (LIVE) { renderAdminLive(box); return; }
     var L = accounts(), nextLesson = COURSE.lessons.length + 1;
     var g = el("div", "grid2"); g.style.alignItems = "start";
     /* cấp quyền */
@@ -809,7 +834,6 @@
     { k: "1-1", name: "Đăng ký học 1-1", form: "", desc: "Thầy kèm riêng, lộ trình theo mục tiêu và lịch của từng học sinh.", items: ["Trực tuyến hoặc trực tiếp tại Hà Nội", "Lấy lại nền, thi tốt nghiệp, đại học, HSG", "Lịch học thỏa thuận"] },
     { k: "doi-tuyen", name: "Đăng ký học theo đội tuyển", form: "", desc: "Dành cho đội tuyển HSG của trường hoặc nhóm học sinh ôn thi chung.", items: ["Ôn thi HSG cấp tỉnh/thành phố, Quốc gia", "Online cho cả đội hoặc thầy dạy tại trường", "Chuyên đề theo yêu cầu của đội"] }
   ];
-  var CFG = window.HHTP_CONFIG || {};
   REG_FORMS.forEach(function (r) { if (CFG.forms && CFG.forms[r.k]) r.form = CFG.forms[r.k]; });
   function renderReg() {
     var box = $("regCards"); box.innerHTML = "";
@@ -824,16 +848,226 @@
     });
   }
 
+  /* =====================================================================
+     CHẾ ĐỘ THẬT: nối với Supabase (bật khi config.js có supabaseUrl)
+     ===================================================================== */
+  var LV = { pageKey: "hhtp-live" };
+  function sbErr(e, prefix) { toast((prefix || "Lỗi") + ": " + (e && (e.message || e.error_description) || "không rõ")); }
+  function liveLogin(reason, onDone) {
+    openModal(function (box) {
+      head(box, "Đăng nhập", reason || "Đăng nhập hoặc tạo tài khoản");
+      box.appendChild(el("p", "note", "Nhập email, trang gửi một đường link đăng nhập vào hộp thư. Bấm link là vào được, không cần mật khẩu. Lần đầu đăng nhập sẽ tự tạo tài khoản."));
+      var inp = el("input", "inp"); inp.type = "email"; inp.id = "emailIn"; inp.placeholder = "email@vidu.com"; inp.autocomplete = "email";
+      fld(box, "Email", inp);
+      var msg = el("p", "note"); msg.hidden = true; box.appendChild(msg);
+      var send = button("", "Gửi link đăng nhập", function () {
+        var em = inp.value.trim();
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { msg.textContent = "Email chưa đúng định dạng."; msg.hidden = false; return; }
+        send.disabled = true; send.textContent = "Đang gửi…";
+        sb.auth.signInWithOtp({ email: em, options: { emailRedirectTo: location.origin + location.pathname } }).then(function (r) {
+          send.disabled = false; send.textContent = "Gửi lại link";
+          if (r.error) { msg.textContent = "Chưa gửi được: " + r.error.message; msg.hidden = false; return; }
+          msg.textContent = "Đã gửi. Mở hộp thư " + em + " (xem cả mục Spam/Quảng cáo), bấm link “Log In” để đăng nhập. Có thể đóng cửa sổ này."; msg.hidden = false;
+          LV.after = onDone || null;
+        });
+      });
+      row(box, [button("ghost", "Đóng", closeModal), send]);
+    });
+  }
+  function accountMenu() {
+    openModal(function (box) {
+      head(box, "Tài khoản", st.nick);
+      var dl = el("dl", "kv"); [["Hạng", ROLES[st.role] || st.role], ["Email", LV.email || ""], ["Bài làm đúng", String(st.correct)]].forEach(function (p) { dl.appendChild(el("dt", null, p[0])); var dd = el("dd", null, p[1]); dd.style.fontFamily = "var(--body)"; dl.appendChild(dd); });
+      if (LV.prof && LV.prof.vip_until && new Date(LV.prof.vip_until) > new Date()) { dl.appendChild(el("dt", null, "VIP đến")); dl.appendChild(el("dd", null, vnDate(LV.prof.vip_until))); }
+      if (LV.prof && LV.prof.student_until && new Date(LV.prof.student_until) > new Date()) { dl.appendChild(el("dt", null, "Học viên đến")); dl.appendChild(el("dd", null, vnDate(LV.prof.student_until))); }
+      box.appendChild(dl);
+      var nk = el("input", "inp"); nk.id = "nickEdit"; nk.maxLength = 24; nk.value = st.nick; fld(box, "Biệt danh (hiện khi bình luận, hỏi đáp)", nk);
+      row(box, [button("ghost", "Đăng xuất", function () { sb.auth.signOut().then(function () { closeModal(); toast("Đã đăng xuất"); }); }),
+        button("", "Lưu biệt danh", function () {
+          var v = nk.value.trim(); if (v.length < 2) { toast("Biệt danh cần ít nhất 2 ký tự"); return; }
+          sb.rpc("update_my_profile", { p_nick: v, p_phone: LV.prof ? LV.prof.phone : null }).then(function (r) { if (r.error) { sbErr(r.error, /duplicate|unique/i.test(r.error.message) ? "Biệt danh đã có người dùng" : "Chưa lưu được"); return; } st.nick = v; closeModal(); renderAll(); toast("Đã lưu biệt danh"); });
+        })]);
+    });
+  }
+  function mapExercises(rows) {
+    var b = [], a = [], e = [];
+    rows.forEach(function (x) {
+      var q = { id: "x" + x.id, db: x.id, g: x.category, isNew: x.is_new };
+      if (x.kind === "essay") { q.essay = true; q.name = (x.title || "").replace(/^Tổng hợp\s+/, "") || "Bài " + x.id; q.text = x.stem; q.de = x.images || []; q.ask = x.ask; e.push(q); }
+      else { q.t = x.stem; q.o = x.options || []; (x.level === "basic" ? b : a).push(q); }
+    });
+    BASIC = b; ADV = a; ESSAY = e;
+  }
+  function loadExercises() {
+    return sb.from("exercises").select("id,level,category,kind,title,stem,options,images,ask,is_new").order("id").then(function (r) { if (r.error) { sbErr(r.error, "Không tải được bài tập"); return; } mapExercises(r.data || []); });
+  }
+  function fetchKey(q) {
+    if (q._k) return; q._k = true;
+    sb.rpc("submit_answer", { p_ex: q.db, p_choice: st.ans[q.id] }).then(function (r) { if (r.error) return; q.a = r.data.answer; q.e = r.data.explain; q.ans = r.data.short_answer; renderEx(); });
+  }
+  function fetchSolution(q, viaAd) {
+    if (q._s) return; q._s = true;
+    sb.rpc("get_solution", { p_ex: q.db, p_via_ad: !!viaAd }).then(function (r) {
+      if (r.error) { q._s = false; sbErr(r.error); return; }
+      q.s = r.data.solution || []; q.da = r.data.answer_images || []; if (r.data.short_answer) q.ans = r.data.short_answer; renderEx();
+    });
+  }
+  function loadComments() {
+    return sb.from("comments").select("id,exercise_id,user_id,body,created_at").order("id").then(function (r) {
+      if (r.error) return;
+      var ids = {}; (r.data || []).forEach(function (c) { ids[c.user_id] = 1; });
+      var list = Object.keys(ids);
+      var done = function (pp) {
+        var by = {}; (pp || []).forEach(function (p) { by[p.id] = p; });
+        CM_SEED = {}; (r.data || []).forEach(function (c) { var p = by[c.user_id] || { nick: "?", role: "member" }; (CM_SEED["x" + c.exercise_id] = CM_SEED["x" + c.exercise_id] || []).push({ n: p.nick, r: p.role, t: c.body, ts: new Date(c.created_at).getTime() }); });
+      };
+      if (!list.length) { done([]); return; }
+      return sb.from("public_profiles").select("id,nick,role").in("id", list).then(function (x) { done(x.data); });
+    });
+  }
+  function loadCourse() {
+    return sb.from("courses").select("id,name,description,meta").eq("active", true).order("id", { ascending: false }).limit(1).then(function (r) {
+      if (r.error || !r.data || !r.data.length) return;
+      var c = r.data[0];
+      return sb.from("lessons").select("id,n,title,held_on,lesson_files(kind,title,position)").eq("course_id", c.id).order("n").then(function (l) {
+        if (l.error) return;
+        var ls = (l.data || []).map(function (x) {
+          var f = (x.lesson_files || []).slice().sort(function (p, q) { return p.position - q.position; });
+          return { id: x.id, n: x.n, d: x.held_on ? vnDate(x.held_on) : "", t: x.title, docs: f.filter(function (z) { return z.kind === "pdf"; }).map(function (z) { return z.title; }), vids: f.filter(function (z) { return z.kind === "video"; }).map(function (z) { return z.title; }) };
+        });
+        if (ls.length) ls[ls.length - 1].isNew = true;
+        COURSE = { id: c.id, name: c.name, desc: c.description || "", meta: c.meta || [], lessons: ls };
+      });
+    });
+  }
+  function loadMine(uid) {
+    var p1 = sb.from("profiles").select("*").eq("id", uid).single();
+    var p2 = sb.rpc("role_of", { uid: uid });
+    var p3 = sb.from("attempts").select("exercise_id,choice,done");
+    var p4 = sb.from("unlocks").select("kind,ref_id");
+    var p5 = sb.from("lesson_purchases").select("lesson_id");
+    return Promise.all([p1, p2, p3, p4, p5]).then(function (R) {
+      var prof = R[0].data; LV.prof = prof;
+      if (!prof) return;
+      st.nick = prof.nick; st.role = R[1].data || "member"; st.correct = prof.correct_count || 0;
+      st.ans = {}; st.done = {}; st.sol = {};
+      (R[2].data || []).forEach(function (a) { if (a.choice != null) st.ans["x" + a.exercise_id] = a.choice; if (a.done) st.done["x" + a.exercise_id] = true; });
+      (R[3].data || []).forEach(function (u) { if (u.kind === "solution") st.sol["x" + u.ref_id] = true; });
+      st.access = null;
+      if (st.role === "student" && (prof.student_from_lesson > 1 || (prof.student_extra_lessons || []).length)) st.access = { from: prof.student_from_lesson, extra: prof.student_extra_lessons || [], exp: prof.student_until, by: "" };
+      st.lessonBought = {}; var bought = (R[4].data || []).map(function (x) { return x.lesson_id; });
+      (COURSE.lessons || []).forEach(function (l) { if (bought.indexOf(l.id) >= 0) st.lessonBought[l.n] = true; });
+      st.studentExpired = !!(prof.student_ever && st.role !== "student");
+    });
+  }
+  function liveSession(session) {
+    var u = session && session.user;
+    LV.email = u ? u.email : "";
+    var base = { role: "guest", nick: "", correct: 0, ans: {}, sol: {}, done: {}, access: null, lessonBought: {} };
+    var keepPage = st.exPage || {};
+    for (var k in base) st[k] = base[k];
+    st.exPage = keepPage;
+    BASIC.concat(ADV, ESSAY).forEach(function (q) { delete q._k; delete q._s; });
+    var p = u ? loadMine(u.id) : Promise.resolve();
+    return p.then(function () { pageNow = {}; renderAll(); if (u && LV.after) { var f = LV.after; LV.after = null; f(); } });
+  }
+  function liveRedeem(code) {
+    return sb.rpc("redeem_code", { p_code: code }).then(function (r) {
+      if (r.error) return r.error.message.replace(/^.*?:\s*/, "");
+      return sb.auth.getSession().then(function (s) { return liveSession(s.data.session); }).then(function () { return ""; });
+    });
+  }
+  function renderAdminLive(box) {
+    var g = el("div", "grid2"); g.style.alignItems = "start"; box.appendChild(g);
+    var c1 = el("form", "card"); c1.style.cssText = "display:grid;gap:12px"; g.appendChild(c1);
+    c1.appendChild(el("h3", null, "Cấp quyền Học viên thủ công")); c1.lastChild.style.fontSize = "17px";
+    c1.appendChild(el("p", "note", "Học sinh cần đăng nhập trang ít nhất một lần để có tài khoản. Gõ đúng biệt danh của học sinh."));
+    var who = el("input", "inp"); who.id = "gWho"; who.setAttribute("list", "accList"); who.placeholder = "Biệt danh của học sinh"; fld(c1, "Tài khoản", who);
+    var dlst = el("datalist"); dlst.id = "accList"; c1.appendChild(dlst);
+    sb.from("profiles").select("id,nick,phone").order("nick").then(function (r) { (r.data || []).forEach(function (p) { var o = el("option"); o.value = p.nick; o.label = p.phone || ""; dlst.appendChild(o); }); LV.accounts = r.data || []; });
+    var nextLesson = (COURSE.lessons || []).length + 1;
+    var from = fld(c1, "Mở khóa học từ buổi", lessonSelect("gFrom", Math.max(1, nextLesson - 1)));
+    var exWrap = el("fieldset", "field"); exWrap.appendChild(el("legend", null, "Tặng thêm buổi cũ (không bắt buộc)")); var exBox = el("div", "checks"); exWrap.appendChild(exBox); c1.appendChild(exWrap);
+    function drawExtra() { exBox.innerHTML = ""; for (var n = 1; n < +from.value; n++) { var lb = el("label"); var cb = el("input"); cb.type = "checkbox"; cb.value = n; lb.appendChild(cb); lb.appendChild(document.createTextNode(" Buổi " + n)); exBox.appendChild(lb); } if (+from.value === 1) exBox.appendChild(el("span", "note", "Mở từ buổi 1 nên không cần tặng thêm.")); }
+    from.addEventListener("change", drawExtra); drawExtra();
+    var gg = el("div", "grid2");
+    var exp = el("input", "inp"); exp.type = "date"; exp.id = "gExp"; exp.value = "2027-05-31"; fld(gg, "Ngày hết hạn", exp);
+    var paid = el("input", "inp"); paid.id = "gPaid"; paid.placeholder = "Ví dụ: 5.500.000đ"; fld(gg, "Số tiền đã thu", paid); c1.appendChild(gg);
+    var note = el("input", "inp"); note.id = "gNote"; note.placeholder = "Ví dụ: chuyển khoản"; fld(c1, "Ghi chú", note);
+    var err = el("p", "err"); err.hidden = true; c1.appendChild(err);
+    var sbtn = el("button", "btn", "Cấp quyền"); sbtn.type = "submit"; sbtn.style.justifySelf = "start"; c1.appendChild(sbtn);
+    c1.addEventListener("submit", function (e) {
+      e.preventDefault(); err.hidden = true;
+      var acc = (LV.accounts || []).filter(function (p) { return p.nick === who.value.trim(); })[0];
+      if (!acc) { err.textContent = "Không tìm thấy tài khoản có biệt danh này."; err.hidden = false; return; }
+      var extra = Array.prototype.map.call(exBox.querySelectorAll("input:checked"), function (x) { return +x.value; });
+      sb.rpc("admin_grant_student", { p_user: acc.id, p_from: +from.value, p_extra: extra, p_expires: exp.value, p_paid: paid.value.trim(), p_note: note.value.trim() }).then(function (r) {
+        if (r.error) { err.textContent = r.error.message; err.hidden = false; return; }
+        toast("Đã cấp gói Học viên cho " + acc.nick); renderAdmin();
+      });
+    });
+    var c2 = el("div", "card"); c2.style.cssText = "display:grid;gap:12px"; g.appendChild(c2);
+    c2.appendChild(el("h3", null, "Tạo mã kích hoạt")); c2.lastChild.style.fontSize = "17px";
+    c2.appendChild(el("p", "note", "Gửi mã qua Zalo sau khi nhận tiền; học sinh nhập mã ở trang Khóa học hiện hành. Mỗi mã dùng một lần."));
+    var cf = lessonSelect("cFrom", Math.max(1, nextLesson - 1)); fld(c2, "Mở khóa học từ buổi", cf);
+    var cg = el("div", "grid2");
+    var cexp = el("input", "inp"); cexp.type = "date"; cexp.id = "cExp"; cexp.value = "2027-05-31"; fld(cg, "Ngày hết hạn", cexp);
+    var cpaid = el("input", "inp"); cpaid.id = "cPaid"; cpaid.placeholder = "Ví dụ: 5.500.000đ"; fld(cg, "Số tiền đã thu", cpaid); c2.appendChild(cg);
+    var mk = button("", "Tạo mã", function () { sb.rpc("admin_create_code", { p_from: +cf.value, p_expires: cexp.value || "2027-05-31", p_paid: cpaid.value.trim() }).then(function (r) { if (r.error) { sbErr(r.error); return; } toast("Đã tạo mã " + r.data); renderAdmin(); }); });
+    mk.style.justifySelf = "start"; c2.appendChild(mk);
+    var tw = el("div", "tablebox"); c2.appendChild(tw);
+    sb.from("activation_codes").select("code,from_lesson,expires_on,used_by,used_at,created_at").order("created_at", { ascending: false }).limit(50).then(function (r) {
+      if (!r.data || !r.data.length) { tw.appendChild(el("p", "note", "Chưa có mã nào.")); return; }
+      var t = el("table"); var hr = el("tr"); ["Mã", "Từ buổi", "Hết hạn", "Trạng thái", ""].forEach(function (x) { hr.appendChild(el("th", null, x)); }); var th = el("thead"); th.appendChild(hr); t.appendChild(th);
+      var tb = el("tbody"); r.data.forEach(function (c) {
+        var tr = el("tr"); tr.appendChild(el("td", "mono", c.code)); tr.appendChild(el("td", null, String(c.from_lesson))); tr.appendChild(el("td", null, vnDate(c.expires_on))); tr.appendChild(el("td", null, c.used_by ? "Đã dùng" : "Chưa dùng"));
+        var td = el("td"); if (!c.used_by) { var cp = el("button", "linkbtn", "Sao chép"); cp.type = "button"; cp.addEventListener("click", function () { try { navigator.clipboard.writeText(c.code); } catch (e) {} toast("Đã sao chép " + c.code); }); td.appendChild(cp); } tr.appendChild(td); tb.appendChild(tr);
+      }); t.appendChild(tb); tw.appendChild(t);
+    });
+    var c3 = el("div", "card tablebox"); c3.style.cssText = "display:grid;gap:10px"; box.appendChild(c3);
+    c3.appendChild(el("h3", null, "Danh sách học viên")); c3.lastChild.style.fontSize = "17px";
+    sb.rpc("admin_students").then(function (r) {
+      var S = r.data || [];
+      if (!S.length) { c3.appendChild(el("p", "note", "Chưa có học viên.")); return; }
+      var t = el("table"); var hr = el("tr"); ["Tài khoản", "Mở từ buổi", "Hết hạn", "Trạng thái", "Ghi chú", ""].forEach(function (x) { hr.appendChild(el("th", null, x)); }); var th = el("thead"); th.appendChild(hr); t.appendChild(th);
+      var tb = el("tbody"); S.forEach(function (a) {
+        var active = new Date(a.student_until) > new Date(), n = a.last_note || {};
+        var tr = el("tr"); tr.appendChild(el("td", null, a.nick + (a.phone ? " · " + a.phone : "")));
+        tr.appendChild(el("td", null, a.student_from_lesson + ((a.student_extra_lessons || []).length ? " (+ " + a.student_extra_lessons.join(", ") + ")" : "")));
+        tr.appendChild(el("td", null, vnDate(a.student_until))); tr.appendChild(el("td", null, active ? "Đang học" : "Hết hạn"));
+        tr.appendChild(el("td", null, [n.paid, n.note, n.code ? "Mã " + n.code : ""].filter(Boolean).join(" · ") || "—"));
+        var td = el("td"); td.style.whiteSpace = "nowrap";
+        var gh = el("button", "linkbtn", "Gia hạn 1 năm"); gh.type = "button"; gh.addEventListener("click", function () { var d = new Date(Math.max(new Date(a.student_until), new Date())); d.setFullYear(d.getFullYear() + 1); sb.rpc("admin_grant_student", { p_user: a.id, p_from: a.student_from_lesson, p_extra: a.student_extra_lessons || [], p_expires: d.toISOString().slice(0, 10), p_paid: "", p_note: "Gia hạn" }).then(function (x) { if (x.error) { sbErr(x.error); return; } toast("Đã gia hạn " + a.nick); renderAdmin(); }); });
+        var rv = el("button", "linkbtn", "Thu hồi"); rv.type = "button"; rv.style.cssText = "color:var(--bad);margin-left:12px"; rv.addEventListener("click", function () { if (!confirm("Thu hồi quyền Học viên của " + a.nick + "?")) return; sb.rpc("admin_revoke_student", { p_user: a.id }).then(function (x) { if (x.error) { sbErr(x.error); return; } toast("Đã thu hồi"); renderAdmin(); }); });
+        td.appendChild(gh); if (active) td.appendChild(rv); tr.appendChild(td); tb.appendChild(tr);
+      }); t.appendChild(tb); c3.appendChild(t);
+    });
+  }
+  function liveInit() {
+    document.querySelectorAll(".demo").forEach(function (x) { x.hidden = true; });
+    var bar = el("div", "livebar", "Trang đang chạy thử. Đã dùng dữ liệu thật: tài khoản, Bài tập, bình luận bài tập, Khóa học hiện hành, Quản trị. Hỏi đáp, Tài liệu, Mua tài liệu, Đánh giá và thanh toán vẫn là bản mẫu.");
+    document.querySelector("main").prepend(bar);
+    try { var o = JSON.parse(localStorage.getItem(LV.pageKey) || "{}"); st.exPage = o.exPage || {}; } catch (e) {}
+    Promise.all([loadExercises(), loadComments(), loadCourse()]).then(function () {
+      return sb.auth.getSession();
+    }).then(function (s) { return liveSession(s.data.session); }).then(function () {
+      sb.auth.onAuthStateChange(function (ev, session) { if (ev === "SIGNED_IN" || ev === "SIGNED_OUT") { closeModal(); liveSession(session).then(function () { if (ev === "SIGNED_IN") toast("Đã đăng nhập: " + st.nick); }); } });
+      if (location.hash && /access_token|error_description/.test(location.hash)) { history.replaceState(null, "", location.pathname); route(); }
+    });
+  }
+
   /* ================= khung chung ================= */
   function renderAcct() {
     var a = $("acct"); a.innerHTML = "";
     if (!logged()) { a.appendChild(button("sm", "Đăng nhập", function () { showLogin(); })); return; }
-    if (st.role === "teacher") { var ad = el("a", "chip", "Thầy · Quản trị"); ad.href = "#quan-tri"; a.appendChild(ad); return; }
-    if (st.role !== "member") a.appendChild(el("span", "chip " + (st.role === "vip" ? "vip" : "amber"), ROLES[st.role]));
-    var c = el("span", "chip"); c.appendChild(el("span", null, st.nick)); c.title = "Biệt danh"; a.appendChild(c);
+    if (st.role === "teacher") { var ad = el("a", "chip", "Thầy · Quản trị"); ad.href = "#quan-tri"; a.appendChild(ad); if (!LIVE) return; }
+    else if (st.role !== "member") a.appendChild(el("span", "chip " + (st.role === "vip" ? "vip" : "amber"), ROLES[st.role]));
+    var c = el(LIVE ? "button" : "span", "chip"); c.appendChild(el("span", null, st.nick)); c.title = LIVE ? "Tài khoản" : "Biệt danh";
+    if (LIVE) { c.type = "button"; c.style.border = "none"; c.style.cursor = "pointer"; c.addEventListener("click", accountMenu); }
+    a.appendChild(c);
   }
   function renderAds() { document.querySelectorAll(".ad").forEach(function (x) { x.hidden = noAds(); }); }
-  function renderHome() { $("homeQ").textContent = BASIC[Math.floor(Date.now() / 864e5) % BASIC.length].t; }
+  function renderHome() { $("homeQ").textContent = BASIC.length ? BASIC[Math.floor(Date.now() / 864e5) % BASIC.length].t : "Thầy sẽ đăng bài sớm."; }
   function renderRoleSeg() { document.querySelectorAll("#roleSeg button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.r === st.role)); }); }
   function renderAll() { renderAcct(); renderAds(); renderHome(); renderEx(); renderDocs(); renderShop(); renderTiers(); renderReviews(); renderForum(); renderCourse(); renderAdmin(); renderRoleSeg(); $("navAdmin").hidden = st.role !== "teacher"; }
 
@@ -859,4 +1093,5 @@
   }
   window.addEventListener("hashchange", route);
   renderReg(); renderAll(); route();
+  if (LIVE) liveInit();
 })();
