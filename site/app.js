@@ -398,6 +398,7 @@
   function topicMeta(t) {
     var rs = repliesOf(t), m = el("div", "tmeta"); m.appendChild(el("span", "lvl", t.g));
     if (t.pending) m.appendChild(el("span", "badge st", "Chờ thầy duyệt"));
+    if (t.hasImg || t.imgUrl) m.appendChild(el("span", "badge", "📷 Có ảnh"));
     if (bestOf(t) != null) m.appendChild(el("span", "badge ok", "Đã giải quyết"));
     if (rs.some(function (r) { return r.r === "teacher"; })) m.appendChild(el("span", "badge t", "Thầy đã trả lời"));
     return m;
@@ -430,6 +431,12 @@
     var card = el("article", "card post"); card.appendChild(topicMeta(t)); card.appendChild(el("h3", null, t.title));
     var tex = null; if (LIVE && !t.mine) { tex = el("div", "cact"); var trp = el("button", "linkbtn", "Báo cáo"); trp.type = "button"; trp.style.color = "var(--muted)"; trp.addEventListener("click", function () { liveReport("topic", t.id); }); tex.appendChild(trp); }
     card.appendChild(cmtEl({ n: t.n, r: t.r, t: t.body, ts: t.ts }, tex)); box.appendChild(card);
+    if (t.imgUrl || t.hasImg) {
+      var fig = el("a", "timg"); fig.target = "_blank"; fig.rel = "noopener"; fig.title = "Bấm để xem ảnh lớn"; card.appendChild(fig);
+      var showImg = function (u) { fig.href = u; var im = el("img"); im.src = u; im.alt = "Ảnh đính kèm câu hỏi"; im.loading = "lazy"; fig.appendChild(im); };
+      if (t.imgUrl) showImg(t.imgUrl);
+      else { fig.appendChild(el("span", "note", "Đang tải ảnh…")); authToken().then(function (tok) { return fetch("/api/forum-image?topic=" + t.id, { headers: tok ? { Authorization: "Bearer " + tok } : {} }); }).then(function (r) { if (!r.ok) throw 0; return r.blob(); }).then(function (b) { fig.innerHTML = ""; t.imgUrl = URL.createObjectURL(b); showImg(t.imgUrl); }).catch(function () { fig.innerHTML = ""; fig.appendChild(el("span", "note", "Không tải được ảnh.")); }); }
+    }
     if (t.pending) {
       var pn = el("div", "card cact"); box.appendChild(pn);
       if (st.role === "teacher") { pn.appendChild(el("span", null, "Câu hỏi đang chờ duyệt.")); pn.appendChild(button("sm", "Duyệt", function () { setTopic(t.id, { approved: true }, "Đã duyệt câu hỏi"); })); pn.appendChild(button("ghost sm", "Từ chối", function () { setTopic(t.id, { hidden: true }, "Đã từ chối câu hỏi"); })); pn.appendChild(banCtl(t.uid, t.n)); return; }
@@ -450,6 +457,29 @@
     wrap.appendChild(composer("Viết câu trả lời của bạn…", "Trả lời câu hỏi", function (v) { if (LIVE) { liveReply(t, v); return; } (st.rep[t.id] = st.rep[t.id] || []).push(me(v)); save(); renderForum(); toast("Đã gửi câu trả lời"); }));
     box.appendChild(wrap);
   }
+  /* Ảnh đính kèm: tối đa 1.000.000 byte; ảnh lớn hơn được tự thu nhỏ thành JPG */
+  var IMG_MAX = 1000000;
+  function shrinkImage(f) {
+    if (!/^image\/(png|jpeg|webp|gif)$/.test(f.type)) return Promise.reject(new Error("Chỉ nhận ảnh PNG, JPG, WEBP hoặc GIF."));
+    if (f.size <= IMG_MAX) return Promise.resolve(f);
+    if (f.type === "image/gif") return Promise.reject(new Error("Ảnh GIF quá 1 MB, hãy chọn ảnh nhỏ hơn."));
+    return new Promise(function (ok, bad) {
+      var im = new Image(), u = URL.createObjectURL(f);
+      im.onload = function () {
+        URL.revokeObjectURL(u);
+        var tries = [[1600, 0.85], [1280, 0.8], [1024, 0.72], [800, 0.65]];
+        (function next(i) {
+          if (i >= tries.length) { bad(new Error("Ảnh quá lớn, không thu nhỏ được dưới 1 MB.")); return; }
+          var k = Math.min(1, tries[i][0] / Math.max(im.naturalWidth, im.naturalHeight));
+          var c = document.createElement("canvas"); c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+          var g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0, c.width, c.height);
+          c.toBlob(function (b) { if (b && b.size <= IMG_MAX) ok(b); else next(i + 1); }, "image/jpeg", tries[i][1]);
+        })(0);
+      };
+      im.onerror = function () { URL.revokeObjectURL(u); bad(new Error("Không đọc được ảnh này.")); };
+      im.src = u;
+    });
+  }
   function askModal() {
     openModal(function (box) {
       head(box, "Hỏi bài", "Đặt câu hỏi mới");
@@ -461,14 +491,27 @@
       field("Chuyên mục", sel);
       var body = el("textarea", "inp"); body.id = "askBody"; body.maxLength = 2000; body.placeholder = "Chép đề bài và ghi rõ em đang vướng ở bước nào.";
       field("Nội dung", body);
-      if (!LIVE) box.appendChild(el("p", "note", "Bản thật cho đính kèm ảnh chụp đề bài."));
+      var pick = { blob: null };
+      var fi = el("input", "inp"); fi.type = "file"; fi.id = "askImg"; fi.accept = "image/png,image/jpeg,image/webp,image/gif";
+      field("Ảnh đính kèm (không bắt buộc, tối đa 1 MB)", fi);
+      var pvw = el("div", "cact"); box.appendChild(pvw);
+      fi.addEventListener("change", function () {
+        pvw.innerHTML = ""; pick.blob = null; var f = fi.files[0]; if (!f) return;
+        pvw.appendChild(el("span", "note", "Đang xử lý ảnh…"));
+        shrinkImage(f).then(function (b) {
+          pick.blob = b; pvw.innerHTML = "";
+          var im = el("img"); im.src = URL.createObjectURL(b); im.alt = "Ảnh đính kèm"; im.style.cssText = "max-height:120px;max-width:200px;border-radius:8px;border:1px solid var(--line)"; pvw.appendChild(im);
+          pvw.appendChild(el("span", "note", Math.round(b.size / 1024) + " KB" + (b !== f ? " (đã tự thu nhỏ từ " + Math.round(f.size / 1024) + " KB)" : "")));
+          pvw.appendChild(button("ghost sm", "Bỏ ảnh", function () { pick.blob = null; fi.value = ""; pvw.innerHTML = ""; }));
+        }).catch(function (e) { pvw.innerHTML = ""; fi.value = ""; pvw.appendChild(el("span", "err", e.message)); });
+      });
       var err = el("p", "err"); err.hidden = true; box.appendChild(err);
       row(box, [button("ghost", "Hủy", closeModal), button("", "Đăng câu hỏi", function () {
         var tt = ti.value.trim(), bd = body.value.trim();
         var msg = tt.length < 8 ? "Tiêu đề cần rõ hơn (ít nhất 8 ký tự)." : bd.length < 10 ? "Viết thêm nội dung câu hỏi." : "";
         if (msg) { err.textContent = msg; err.hidden = false; return; }
-        if (LIVE) { if (banned()) return; liveAsk(sel.value, tt, bd).then(function (ok) { if (ok) { closeModal(); if (location.hash !== "#hoi-dap") location.hash = "#hoi-dap"; } }); return; }
-        var t = { id: "u" + Date.now(), n: st.nick, r: st.role, g: sel.value, title: tt, body: bd, ts: Date.now(), mine: true, replies: [] };
+        if (LIVE) { if (banned()) return; liveAsk(sel.value, tt, bd, pick.blob).then(function (ok) { if (ok) { closeModal(); if (location.hash !== "#hoi-dap") location.hash = "#hoi-dap"; } }); return; }
+        var t = { id: "u" + Date.now(), n: st.nick, r: st.role, g: sel.value, title: tt, body: bd, ts: Date.now(), mine: true, replies: [], imgUrl: pick.blob ? URL.createObjectURL(pick.blob) : null };
         st.topics.push(t); forumOpen = t.id; save(); closeModal();
         if (location.hash !== "#hoi-dap") location.hash = "#hoi-dap";
         renderForum(); toast("Đã đăng câu hỏi");
@@ -1098,7 +1141,7 @@
   function loadForum() {
     var uid = LV.prof && LV.prof.id;
     return Promise.all([
-      sb.from("topics").select("id,user_id,category,title,body,best_reply_id,approved,created_at").order("id", { ascending: false }),
+      sb.from("topics").select("id,user_id,category,title,body,best_reply_id,approved,image_key,created_at").order("id", { ascending: false }),
       sb.from("replies").select("id,topic_id,user_id,body,created_at").order("id"),
       sb.from("reply_likes").select("user_id,reply_id")
     ]).then(function (R) {
@@ -1109,7 +1152,7 @@
         st.likes = {}; st.solved = {}; st.topics = []; st.rep = {};
         TOPICS = T.map(function (t) {
           var reps = P.filter(function (p) { return p.topic_id === t.id; });
-          var o = { id: t.id, n: who(t.user_id).nick, r: who(t.user_id).role, g: t.category, title: t.title, body: t.body, ts: new Date(t.created_at).getTime(), mine: t.user_id === uid, uid: t.user_id, pending: t.approved === false, replies: [] };
+          var o = { id: t.id, n: who(t.user_id).nick, r: who(t.user_id).role, g: t.category, title: t.title, body: t.body, ts: new Date(t.created_at).getTime(), mine: t.user_id === uid, uid: t.user_id, pending: t.approved === false, hasImg: !!t.image_key, replies: [] };
           reps.forEach(function (p, i) {
             var total = L.filter(function (l) { return l.reply_id === p.id; }).length, mineLike = L.some(function (l) { return l.reply_id === p.id && l.user_id === uid; });
             if (mineLike) st.likes[t.id + ":" + i] = true;
@@ -1129,8 +1172,18 @@
   }
   function liveBest(t, i) { sb.from("topics").update({ best_reply_id: t.replies[i].rid }).eq("id", t.id).then(function (x) { if (x.error) { sbErr(x.error); return; } forumAfter("Đã đánh dấu câu hỏi đã giải quyết"); }); }
   function liveReply(t, v) { if (banned()) return; sb.from("replies").insert({ topic_id: t.id, user_id: LV.prof.id, body: v }).then(function (x) { if (x.error) { sbErr(x.error, "Chưa gửi được"); return; } forumAfter("Đã gửi câu trả lời"); }); }
-  function liveAsk(cat, title, body) {
-    return sb.from("topics").insert({ user_id: LV.prof.id, category: cat, title: title, body: body }).select("id").single().then(function (x) {
+  function uploadForumImage(blob) {
+    if (!blob) return Promise.resolve(null);
+    toast("Đang tải ảnh lên…");
+    return authToken().then(function (tok) { return fetch("/api/forum-image", { method: "PUT", headers: { Authorization: "Bearer " + tok, "Content-Type": blob.type || "application/octet-stream" }, body: blob }); })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.error || ("Lỗi " + r.status)); return j.key; }); });
+  }
+  function liveAsk(cat, title, body, img) {
+    return uploadForumImage(img).catch(function (e) { toast("Chưa tải được ảnh: " + e.message); return false; }).then(function (key) {
+      if (key === false) return { error: null, skip: true };
+      return sb.from("topics").insert({ user_id: LV.prof.id, category: cat, title: title, body: body, image_key: key || null }).select("id").single();
+    }).then(function (x) {
+      if (x.skip) return false;
       if (x.error) { sbErr(x.error, "Chưa đăng được"); return false; }
       forumOpen = x.data.id; return forumAfter(st.role === "teacher" ? "Đã đăng câu hỏi" : "Đã gửi câu hỏi, thầy sẽ duyệt trước khi hiện cho mọi người").then(function () { return true; });
     });

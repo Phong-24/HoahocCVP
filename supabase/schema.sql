@@ -272,6 +272,9 @@ alter table reviews enable row level security;
 alter table profiles add column if not exists banned_until timestamptz;   -- 'infinity' = vô thời hạn
 alter table topics add column if not exists approved boolean not null default true; -- câu hỏi cũ coi như đã duyệt
 alter table topics alter column approved set default false;
+-- Ảnh đính kèm câu hỏi phải nằm trong thư mục riêng của người hỏi
+alter table topics drop constraint if exists topics_image_key_owner;
+alter table topics add constraint topics_image_key_owner check (image_key is null or image_key like ('forum/' || user_id::text || '/%'));
 
 create or replace function public.can_post() returns boolean
 language sql stable security definer set search_path = public as $$
@@ -335,7 +338,7 @@ language plpgsql security definer set search_path = public as $$
 begin
   if not is_teacher() then
     new.title := old.title; new.body := old.body; new.category := old.category;
-    new.hidden := old.hidden; new.user_id := old.user_id; new.approved := old.approved;
+    new.hidden := old.hidden; new.user_id := old.user_id; new.approved := old.approved; new.image_key := old.image_key;
   end if;
   return new;
 end $$;
