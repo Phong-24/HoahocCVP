@@ -386,7 +386,7 @@
     list.forEach(function (c) { box.appendChild(cmtEl(c)); });
     if (!list.length) box.appendChild(el("p", "note", "Chưa có bình luận. Hãy hỏi thêm hoặc chia sẻ cách giải của bạn."));
     box.appendChild(composer("Hỏi thêm hoặc chia sẻ cách giải khác…", "Bình luận bài này", function (v) {
-      if (LIVE) { sb.from("comments").insert({ exercise_id: q.db, user_id: LV.prof.id, body: v }).then(function (r) { if (r.error) { sbErr(r.error, "Chưa gửi được"); return; } openDisc[q.id] = true; loadComments().then(function () { renderEx(); toast("Đã gửi bình luận"); }); }); return; }
+      if (LIVE) { if (banned()) return; sb.from("comments").insert({ exercise_id: q.db, user_id: LV.prof.id, body: v }).then(function (r) { if (r.error) { sbErr(r.error, "Chưa gửi được"); return; } openDisc[q.id] = true; loadComments().then(function () { renderEx(); toast("Đã gửi bình luận"); }); }); return; }
       (st.cm[q.id] = st.cm[q.id] || []).push(me(v)); openDisc[q.id] = true; save(); renderEx(); toast("Đã gửi bình luận");
     }));
     dt.appendChild(box); return dt;
@@ -397,6 +397,7 @@
   function bestOf(t) { return st.solved[t.id] != null ? st.solved[t.id] : t.best; }
   function topicMeta(t) {
     var rs = repliesOf(t), m = el("div", "tmeta"); m.appendChild(el("span", "lvl", t.g));
+    if (t.pending) m.appendChild(el("span", "badge st", "Chờ thầy duyệt"));
     if (bestOf(t) != null) m.appendChild(el("span", "badge ok", "Đã giải quyết"));
     if (rs.some(function (r) { return r.r === "teacher"; })) m.appendChild(el("span", "badge t", "Thầy đã trả lời"));
     return m;
@@ -429,6 +430,11 @@
     var card = el("article", "card post"); card.appendChild(topicMeta(t)); card.appendChild(el("h3", null, t.title));
     var tex = null; if (LIVE && !t.mine) { tex = el("div", "cact"); var trp = el("button", "linkbtn", "Báo cáo"); trp.type = "button"; trp.style.color = "var(--muted)"; trp.addEventListener("click", function () { liveReport("topic", t.id); }); tex.appendChild(trp); }
     card.appendChild(cmtEl({ n: t.n, r: t.r, t: t.body, ts: t.ts }, tex)); box.appendChild(card);
+    if (t.pending) {
+      var pn = el("div", "card cact"); box.appendChild(pn);
+      if (st.role === "teacher") { pn.appendChild(el("span", null, "Câu hỏi đang chờ duyệt.")); pn.appendChild(button("sm", "Duyệt", function () { setTopic(t.id, { approved: true }, "Đã duyệt câu hỏi"); })); pn.appendChild(button("ghost sm", "Từ chối", function () { setTopic(t.id, { hidden: true }, "Đã từ chối câu hỏi"); })); pn.appendChild(banCtl(t.uid, t.n)); return; }
+      else { pn.appendChild(el("span", "note", "Câu hỏi đang chờ thầy duyệt. Chỉ bạn thấy câu hỏi này cho đến khi được duyệt.")); return; }
+    }
     var rs = repliesOf(t), best = bestOf(t);
     var wrap = el("div", "card cmts"); wrap.appendChild(el("h3", null, rs.length ? rs.length + " câu trả lời" : "Chưa có câu trả lời")); wrap.lastChild.style.fontSize = "16px";
     rs.forEach(function (r, i) {
@@ -447,6 +453,7 @@
   function askModal() {
     openModal(function (box) {
       head(box, "Hỏi bài", "Đặt câu hỏi mới");
+      if (LIVE && st.role !== "teacher") box.appendChild(el("p", "note", "Câu hỏi sẽ hiện cho mọi người sau khi thầy duyệt."));
       function field(label, node) { var f = el("div", "field"); var lb = el("label", null, label); lb.htmlFor = node.id; f.appendChild(lb); f.appendChild(node); box.appendChild(f); return node; }
       var ti = el("input", "inp"); ti.type = "text"; ti.id = "askTitle"; ti.maxLength = 120; ti.placeholder = "Ví dụ: Cân bằng phản ứng FeS₂ + HNO₃";
       field("Tiêu đề", ti);
@@ -460,7 +467,7 @@
         var tt = ti.value.trim(), bd = body.value.trim();
         var msg = tt.length < 8 ? "Tiêu đề cần rõ hơn (ít nhất 8 ký tự)." : bd.length < 10 ? "Viết thêm nội dung câu hỏi." : "";
         if (msg) { err.textContent = msg; err.hidden = false; return; }
-        if (LIVE) { liveAsk(sel.value, tt, bd).then(function (ok) { if (ok) { closeModal(); if (location.hash !== "#hoi-dap") location.hash = "#hoi-dap"; } }); return; }
+        if (LIVE) { if (banned()) return; liveAsk(sel.value, tt, bd).then(function (ok) { if (ok) { closeModal(); if (location.hash !== "#hoi-dap") location.hash = "#hoi-dap"; } }); return; }
         var t = { id: "u" + Date.now(), n: st.nick, r: st.role, g: sel.value, title: tt, body: bd, ts: Date.now(), mine: true, replies: [] };
         st.topics.push(t); forumOpen = t.id; save(); closeModal();
         if (location.hash !== "#hoi-dap") location.hash = "#hoi-dap";
@@ -1091,7 +1098,7 @@
   function loadForum() {
     var uid = LV.prof && LV.prof.id;
     return Promise.all([
-      sb.from("topics").select("id,user_id,category,title,body,best_reply_id,created_at").order("id", { ascending: false }),
+      sb.from("topics").select("id,user_id,category,title,body,best_reply_id,approved,created_at").order("id", { ascending: false }),
       sb.from("replies").select("id,topic_id,user_id,body,created_at").order("id"),
       sb.from("reply_likes").select("user_id,reply_id")
     ]).then(function (R) {
@@ -1102,7 +1109,7 @@
         st.likes = {}; st.solved = {}; st.topics = []; st.rep = {};
         TOPICS = T.map(function (t) {
           var reps = P.filter(function (p) { return p.topic_id === t.id; });
-          var o = { id: t.id, n: who(t.user_id).nick, r: who(t.user_id).role, g: t.category, title: t.title, body: t.body, ts: new Date(t.created_at).getTime(), mine: t.user_id === uid, replies: [] };
+          var o = { id: t.id, n: who(t.user_id).nick, r: who(t.user_id).role, g: t.category, title: t.title, body: t.body, ts: new Date(t.created_at).getTime(), mine: t.user_id === uid, uid: t.user_id, pending: t.approved === false, replies: [] };
           reps.forEach(function (p, i) {
             var total = L.filter(function (l) { return l.reply_id === p.id; }).length, mineLike = L.some(function (l) { return l.reply_id === p.id && l.user_id === uid; });
             if (mineLike) st.likes[t.id + ":" + i] = true;
@@ -1121,11 +1128,11 @@
     q.then(function (x) { if (x.error) { sbErr(x.error); return; } forumAfter(); });
   }
   function liveBest(t, i) { sb.from("topics").update({ best_reply_id: t.replies[i].rid }).eq("id", t.id).then(function (x) { if (x.error) { sbErr(x.error); return; } forumAfter("Đã đánh dấu câu hỏi đã giải quyết"); }); }
-  function liveReply(t, v) { sb.from("replies").insert({ topic_id: t.id, user_id: LV.prof.id, body: v }).then(function (x) { if (x.error) { sbErr(x.error, "Chưa gửi được"); return; } forumAfter("Đã gửi câu trả lời"); }); }
+  function liveReply(t, v) { if (banned()) return; sb.from("replies").insert({ topic_id: t.id, user_id: LV.prof.id, body: v }).then(function (x) { if (x.error) { sbErr(x.error, "Chưa gửi được"); return; } forumAfter("Đã gửi câu trả lời"); }); }
   function liveAsk(cat, title, body) {
     return sb.from("topics").insert({ user_id: LV.prof.id, category: cat, title: title, body: body }).select("id").single().then(function (x) {
       if (x.error) { sbErr(x.error, "Chưa đăng được"); return false; }
-      forumOpen = x.data.id; return forumAfter("Đã đăng câu hỏi").then(function () { return true; });
+      forumOpen = x.data.id; return forumAfter(st.role === "teacher" ? "Đã đăng câu hỏi" : "Đã gửi câu hỏi, thầy sẽ duyệt trước khi hiện cho mọi người").then(function () { return true; });
     });
   }
   function liveReport(type, id) {
@@ -1147,14 +1154,85 @@
     });
   }
   function liveSaveReview(who, s, body) {
+    if (banned()) return;
     sb.from("reviews").upsert({ user_id: LV.prof.id, who: who, stars: s, body: body }, { onConflict: "user_id" }).then(function (x) {
       if (x.error) { sbErr(x.error, "Chưa gửi được"); return; }
       rvEdit = false; loadReviews().then(function () { renderReviews(); toast("Đã gửi đánh giá, thầy sẽ duyệt trước khi hiện"); });
     });
   }
 
+  /* ---- Cấm đăng bài ---- */
+  function banText(v) { if (!v) return ""; return /infinity/i.test(String(v)) ? "vô thời hạn" : "đến " + new Date(v).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", year: "numeric" }); }
+  function isBanned(v) { return !!v && (/infinity/i.test(String(v)) || new Date(v) > new Date()); }
+  function banned() {
+    var v = LV.prof && LV.prof.banned_until;
+    if (!isBanned(v)) return false;
+    toast("Tài khoản của bạn đang bị khóa đăng bài " + banText(v) + ". Liên hệ thầy qua Zalo nếu có nhầm lẫn."); return true;
+  }
+  function setTopic(id, patch, msg) {
+    sb.from("topics").update(patch).eq("id", id).then(function (r) { if (r.error) { sbErr(r.error); return; } toast(msg); if (patch.hidden) forumOpen = null; forumAfter(); if (location.hash === "#quan-tri") renderAdmin(); });
+  }
+  function banCtl(uid, nick) {
+    var w = el("span", "cact"); if (!uid) return w;
+    var s = el("select", "inp"); s.style.maxWidth = "150px"; s.setAttribute("aria-label", "Thời hạn cấm " + nick);
+    [["7", "Cấm 1 tuần"], ["30", "Cấm 1 tháng"], ["", "Cấm vô thời hạn"]].forEach(function (o) { var op = el("option", null, o[1]); op.value = o[0]; s.appendChild(op); });
+    w.appendChild(s);
+    w.appendChild(button("sm amber", "Cấm " + nick, function () {
+      var label = s.options[s.selectedIndex].text.toLowerCase();
+      if (!confirm(label.charAt(0).toUpperCase() + label.slice(1) + " tài khoản " + nick + "? Bạn ấy vẫn đăng nhập và xem được, nhưng không đăng bài, bình luận hay trả lời được.")) return;
+      sb.rpc("admin_ban", { p_user: uid, p_days: s.value ? +s.value : null }).then(function (r) { if (r.error) { sbErr(r.error); return; } toast("Đã cấm " + nick + " " + banText(r.data)); if (location.hash === "#quan-tri") renderAdmin(); });
+    }));
+    return w;
+  }
+
   /* ---- Quản trị: duyệt đánh giá, xử lý báo cáo ---- */
   function renderModeration(box) {
+    /* Câu hỏi chờ duyệt */
+    var cq = el("div", "card"); cq.style.cssText = "display:grid;gap:10px"; box.appendChild(cq);
+    cq.appendChild(el("h3", null, "Câu hỏi chờ duyệt")); cq.lastChild.style.fontSize = "17px";
+    var qBox = el("div", "cmts"); cq.appendChild(qBox);
+    sb.from("topics").select("id,user_id,category,title,body,created_at").eq("approved", false).eq("hidden", false).order("id").then(function (r) {
+      var rows = r.data || []; if (!rows.length) { qBox.appendChild(el("p", "note", "Không có câu hỏi nào chờ duyệt.")); return; }
+      var ids = {}; rows.forEach(function (x) { ids[x.user_id] = 1; });
+      nickMap(ids).then(function (m) { rows.forEach(function (x) {
+        var nk = (m[x.user_id] || {}).nick || "?";
+        var ex = el("div", "cact");
+        ex.appendChild(button("sm", "Duyệt", function () { setTopic(x.id, { approved: true }, "Đã duyệt câu hỏi"); }));
+        ex.appendChild(button("ghost sm", "Từ chối", function () { setTopic(x.id, { hidden: true }, "Đã từ chối câu hỏi"); }));
+        ex.appendChild(banCtl(x.user_id, nk));
+        qBox.appendChild(cmtEl({ n: nk, r: (m[x.user_id] || {}).role, t: "[" + x.category + "] " + x.title + " — " + x.body, ts: new Date(x.created_at).getTime() }, ex));
+      }); });
+    });
+    /* Cấm đăng bài */
+    var cb = el("div", "card"); cb.style.cssText = "display:grid;gap:10px"; box.appendChild(cb);
+    cb.appendChild(el("h3", null, "Cấm đăng bài")); cb.lastChild.style.fontSize = "17px";
+    cb.appendChild(el("p", "note", "Thành viên bị cấm vẫn đăng nhập, xem bài và dùng tài liệu đã mua, nhưng không đặt câu hỏi, trả lời, bình luận hay viết đánh giá được. Hết hạn cấm thì tự mở lại."));
+    var bf = el("div", "cact"); cb.appendChild(bf);
+    var bw = el("input", "inp"); bw.placeholder = "Biệt danh thành viên"; bw.setAttribute("list", "banList"); bw.setAttribute("aria-label", "Biệt danh cần cấm"); bw.style.maxWidth = "240px"; bf.appendChild(bw);
+    var bl = el("datalist"); bl.id = "banList"; bf.appendChild(bl);
+    var bsel = el("select", "inp"); bsel.style.maxWidth = "170px"; bsel.setAttribute("aria-label", "Thời hạn cấm");
+    [["7", "1 tuần"], ["30", "1 tháng"], ["", "Vô thời hạn"]].forEach(function (o) { var op = el("option", null, o[1]); op.value = o[0]; bsel.appendChild(op); }); bf.appendChild(bsel);
+    var accs = [];
+    bf.appendChild(button("sm amber", "Cấm", function () {
+      var a = accs.filter(function (p) { return p.nick === bw.value.trim(); })[0];
+      if (!a) { toast("Không tìm thấy thành viên có biệt danh này"); return; }
+      if (!confirm("Cấm " + a.nick + " " + bsel.options[bsel.selectedIndex].text.toLowerCase() + "?")) return;
+      sb.rpc("admin_ban", { p_user: a.id, p_days: bsel.value ? +bsel.value : null }).then(function (r) { if (r.error) { sbErr(r.error); return; } toast("Đã cấm " + a.nick + " " + banText(r.data)); renderAdmin(); });
+    }));
+    var bt = el("div", "tablebox"); cb.appendChild(bt);
+    sb.from("profiles").select("id,nick,is_teacher,banned_until").order("nick").then(function (r) {
+      accs = (r.data || []).filter(function (p) { return !p.is_teacher; });
+      accs.forEach(function (p) { var o = el("option"); o.value = p.nick; bl.appendChild(o); });
+      var on = accs.filter(function (p) { return isBanned(p.banned_until); });
+      if (!on.length) { bt.appendChild(el("p", "note", "Hiện không có ai bị cấm.")); return; }
+      var t = el("table"); var hr = el("tr"); ["Thành viên", "Bị cấm", ""].forEach(function (x) { hr.appendChild(el("th", null, x)); }); var th = el("thead"); th.appendChild(hr); t.appendChild(th);
+      var tb = el("tbody"); on.forEach(function (p) {
+        var tr = el("tr"); tr.appendChild(el("td", null, p.nick)); tr.appendChild(el("td", null, banText(p.banned_until)));
+        var td = el("td"); var ub = el("button", "linkbtn", "Bỏ cấm"); ub.type = "button";
+        ub.addEventListener("click", function () { sb.rpc("admin_ban", { p_user: p.id, p_days: 0 }).then(function (x) { if (x.error) { sbErr(x.error); return; } toast("Đã bỏ cấm " + p.nick); renderAdmin(); }); });
+        td.appendChild(ub); tr.appendChild(td); tb.appendChild(tr);
+      }); t.appendChild(tb); bt.appendChild(t);
+    });
     var c = el("div", "card"); c.style.cssText = "display:grid;gap:10px"; box.appendChild(c);
     c.appendChild(el("h3", null, "Đánh giá chờ duyệt")); c.lastChild.style.fontSize = "17px";
     var rvBox = el("div", "cmts"); c.appendChild(rvBox);
@@ -1176,12 +1254,16 @@
       rows.forEach(function (x) {
         var line = el("div", "cact"); line.appendChild(el("b", null, label[x.target_type] + " #" + x.target_id));
         var txt = el("span", "note", "Đang tải nội dung…"); line.appendChild(txt);
-        if (tbl[x.target_type]) sb.from(tbl[x.target_type]).select(x.target_type === "topic" ? "title,body" : "body").eq("id", x.target_id).single().then(function (y) { txt.textContent = y.data ? "“" + (y.data.title ? y.data.title + ": " : "") + y.data.body.slice(0, 140) + "”" : "(đã xóa)"; });
+        var banSlot = el("span"); 
+        if (tbl[x.target_type]) sb.from(tbl[x.target_type]).select(x.target_type === "topic" ? "user_id,title,body" : "user_id,body").eq("id", x.target_id).single().then(function (y) {
+          txt.textContent = y.data ? "“" + (y.data.title ? y.data.title + ": " : "") + y.data.body.slice(0, 140) + "”" : "(đã xóa)";
+          if (y.data) { var o = {}; o[y.data.user_id] = 1; nickMap(o).then(function (m) { banSlot.appendChild(banCtl(y.data.user_id, (m[y.data.user_id] || {}).nick || "người viết")); }); }
+        });
         var hide = el("button", "btn sm amber", "Ẩn nội dung"); hide.type = "button";
         hide.addEventListener("click", function () { sb.from(tbl[x.target_type]).update({ hidden: true }).eq("id", x.target_id).then(function () { return sb.from("reports").update({ resolved: true }).eq("id", x.id); }).then(function () { toast("Đã ẩn"); renderAdmin(); }); });
         var skip = el("button", "btn sm ghost", "Bỏ qua"); skip.type = "button";
         skip.addEventListener("click", function () { sb.from("reports").update({ resolved: true }).eq("id", x.id).then(function () { renderAdmin(); }); });
-        if (tbl[x.target_type]) line.appendChild(hide); line.appendChild(skip); rpBox.appendChild(line);
+        if (tbl[x.target_type]) line.appendChild(hide); line.appendChild(skip); line.appendChild(banSlot); rpBox.appendChild(line);
       });
     });
   }

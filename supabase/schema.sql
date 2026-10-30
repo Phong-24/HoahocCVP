@@ -268,9 +268,15 @@ alter table reply_likes enable row level security;
 alter table reports enable row level security;
 alter table reviews enable row level security;
 
+-- Duyệt câu hỏi và cấm đăng bài (thêm cột cho cơ sở dữ liệu đã có)
+alter table profiles add column if not exists banned_until timestamptz;   -- 'infinity' = vô thời hạn
+alter table topics add column if not exists approved boolean not null default true; -- câu hỏi cũ coi như đã duyệt
+alter table topics alter column approved set default false;
+
 create or replace function public.can_post() returns boolean
 language sql stable security definer set search_path = public as $$
-  select coalesce((select not comment_banned from profiles where id = auth.uid()), false)
+  select coalesce((select not comment_banned and (banned_until is null or banned_until <= now())
+                   from profiles where id = auth.uid()), false)
 $$;
 
 drop policy if exists "comments: xem" on comments;
@@ -281,7 +287,7 @@ drop policy if exists "comments: thầy quản lý" on comments;
 create policy "comments: thầy quản lý" on comments for update using (is_teacher());
 
 drop policy if exists "topics: xem" on topics;
-create policy "topics: xem" on topics for select using (not hidden or is_teacher());
+create policy "topics: xem" on topics for select using ((approved and not hidden) or user_id = auth.uid() or is_teacher());
 drop policy if exists "topics: đăng" on topics;
 create policy "topics: đăng" on topics for insert with check (user_id = auth.uid() and can_post());
 drop policy if exists "topics: người hỏi chọn đáp án, thầy quản lý" on topics;
@@ -290,7 +296,8 @@ create policy "topics: người hỏi chọn đáp án, thầy quản lý" on to
 drop policy if exists "replies: xem" on replies;
 create policy "replies: xem" on replies for select using (not hidden or is_teacher());
 drop policy if exists "replies: trả lời" on replies;
-create policy "replies: trả lời" on replies for insert with check (user_id = auth.uid() and can_post());
+create policy "replies: trả lời" on replies for insert with check (user_id = auth.uid() and can_post()
+  and exists (select 1 from topics t where t.id = topic_id and t.approved and not t.hidden));
 drop policy if exists "replies: thầy quản lý" on replies;
 create policy "replies: thầy quản lý" on replies for update using (is_teacher());
 
@@ -307,7 +314,7 @@ create policy "reports: thầy xem" on reports for all using (is_teacher());
 drop policy if exists "reviews: xem đã duyệt" on reviews;
 create policy "reviews: xem đã duyệt" on reviews for select using (approved or user_id = auth.uid() or is_teacher());
 drop policy if exists "reviews: viết của mình" on reviews;
-create policy "reviews: viết của mình" on reviews for insert with check (user_id = auth.uid() and not approved);
+create policy "reviews: viết của mình" on reviews for insert with check (user_id = auth.uid() and not approved and can_post());
 drop policy if exists "reviews: sửa của mình" on reviews;
 create policy "reviews: sửa của mình" on reviews for update using (user_id = auth.uid() or is_teacher());
 
@@ -328,12 +335,39 @@ language plpgsql security definer set search_path = public as $$
 begin
   if not is_teacher() then
     new.title := old.title; new.body := old.body; new.category := old.category;
-    new.hidden := old.hidden; new.user_id := old.user_id;
+    new.hidden := old.hidden; new.user_id := old.user_id; new.approved := old.approved;
   end if;
   return new;
 end $$;
 drop trigger if exists topics_guard on topics;
 create trigger topics_guard before update on topics for each row execute function topic_guard();
+
+-- Câu hỏi mới của thành viên phải chờ thầy duyệt; câu hỏi của thầy hiện ngay
+create or replace function public.topic_new() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  new.approved := is_teacher(); new.hidden := false; new.best_reply_id := null;
+  return new;
+end $$;
+drop trigger if exists topics_new on topics;
+create trigger topics_new before insert on topics for each row execute function topic_new();
+
+-- Thầy cấm thành viên đăng bài: p_days = 7, 30…; null = vô thời hạn; 0 = bỏ cấm
+create or replace function public.admin_ban(p_user uuid, p_days int) returns timestamptz
+language plpgsql security definer set search_path = public as $$
+declare v timestamptz;
+begin
+  if not is_teacher() then raise exception 'Chỉ thầy được làm việc này'; end if;
+  if exists (select 1 from profiles where id = p_user and is_teacher) then raise exception 'Không thể cấm tài khoản quản trị'; end if;
+  v := case when p_days is null then 'infinity'::timestamptz when p_days <= 0 then null else now() + make_interval(days => p_days) end;
+  update profiles set banned_until = v where id = p_user;
+  if not found then raise exception 'Không tìm thấy tài khoản'; end if;
+  insert into admin_log (admin_id, target_id, action, data)
+    values (auth.uid(), p_user, case when v is null then 'unban' else 'ban' end, jsonb_build_object('days', p_days));
+  return v;
+end $$;
+revoke execute on function public.admin_ban(uuid, int) from public, anon;
+grant execute on function public.admin_ban(uuid, int) to authenticated;
 
 -- ---------------------------------------------------------------------
 -- 5. Tài liệu miễn phí / xem quảng cáo, và tài liệu bán
