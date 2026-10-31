@@ -39,7 +39,8 @@
     { id: "a4", g: "Cơ chế", t: "Đun 2-brom-2-metylbutan với KOH trong etanol, sản phẩm hữu cơ chính là", o: ["2-metylbut-1-en", "2-metylbut-2-en", "3-metylbut-1-en", "2-metylbutan-2-ol"], a: 1, ans: "2-metylbut-2-en",
       s: ["KOH/etanol, đun nóng: ưu tiên phản ứng tách E2.", "H có thể tách ở C1 (CH₃) hoặc C3 (CH₂); theo quy tắc Zaitsev, anken nhiều nhóm thế hơn là sản phẩm chính.", "Sản phẩm chính: (CH₃)₂C=CH–CH₃, tức 2-metylbut-2-en."] }
   ];
-  var DOC_CATS = ["Tất cả", "Đề thi HSG QG", "Đề thi IChO", "Đề thi Duyên hải", "Sách", "Chuyên đề khác"];
+  var DOC_CATS = ["Tất cả", "Đề thi HSG QG", "Đề thi IChO", "Đề thi Duyên hải", "Sách", "Chuyên đề khác", "Trang web học tập hữu ích"];
+  var LINK_CAT = "Trang web học tập hữu ích";
   var DOCS = [
     { id: "qg1", cat: "Đề thi HSG QG", tag: "Đề thi HSG QG", title: "Đề thi chọn HSG Quốc gia môn Hóa học – ngày thi thứ nhất", pages: 12, acc: "open" },
     { id: "qg2", cat: "Đề thi HSG QG", tag: "Đề thi HSG QG", title: "Đề thi chọn HSG Quốc gia – ngày thi thứ hai, kèm hướng dẫn chấm", pages: 20, acc: "ad" },
@@ -621,10 +622,34 @@
       b.addEventListener("click", function () { set(c); }); box.appendChild(b);
     });
   }
+  /* Trang web học tập hữu ích: link chỉ hiện sau quảng cáo (VIP, Học viên mở thẳng) */
+  function linkCard(d) {
+    var open = st.opened[d.id] || noAds(), btn, lk, cls;
+    if (noAds()) { lk = "Mở thẳng (" + ROLES[st.role] + ")"; cls = "vip"; }
+    else { lk = st.opened[d.id] ? "Đã mở" : "Mở bằng 1 quảng cáo"; cls = "ad"; }
+    if (open) btn = button("sm", "Xem link", function () { showLink(d); });
+    else btn = button("amber sm", "Xem quảng cáo để lấy link", function () { showAd(d.title, function () { st.opened[d.id] = true; save(); renderDocs(); showLink(d); }); });
+    return docCard(d, lk, cls, d.desc || "Trang web học tập", btn);
+  }
+  function showLink(d) {
+    var p = LIVE ? sb.rpc("open_link", { p_id: d.dbId }).then(function (r) { if (r.error || !r.data) throw new Error(r.error ? r.error.message : "Link không còn"); return r.data; }) : Promise.resolve(d.url);
+    p.then(function (url) {
+      if (!/^https?:\/\//i.test(url || "")) throw new Error("Link không hợp lệ");
+      openModal(function (box) {
+        head(box, "Trang web học tập", d.title);
+        if (d.desc) box.appendChild(el("p", "note", d.desc));
+        var code = el("p", "mono", url); code.style.cssText = "word-break:break-all;background:var(--tint);padding:8px 10px;border-radius:8px;margin:0"; box.appendChild(code);
+        var a = el("a", "btn", "Mở trang web ↗"); a.href = url; a.target = "_blank"; a.rel = "noopener noreferrer"; a.addEventListener("click", closeModal);
+        var cp = button("ghost", "Sao chép link", function () { try { navigator.clipboard.writeText(url); } catch (e) {} toast("Đã sao chép link"); });
+        row(box, [button("ghost", "Đóng", closeModal), cp, a]);
+      });
+    }).catch(function (e) { toast(e.message); });
+  }
   function renderDocs() {
     catChips("docCats", DOC_CATS, DOCS, docCat, function (c) { docCat = c; renderDocs(); });
     var box = $("docsFree"); box.innerHTML = "";
     DOCS.filter(function (d) { return docCat === "Tất cả" || d.cat === docCat; }).forEach(function (d) {
+      if (d.kind === "link") { box.appendChild(linkCard(d)); return; }
       var open = d.acc === "open" || st.opened[d.id] || noAds(), btn, lk, cls;
       if (d.acc === "open") { lk = "Đọc tự do"; cls = "free"; }
       else if (noAds()) { lk = "Mở thẳng (" + ROLES[st.role] + ")"; cls = "vip"; }
@@ -1486,9 +1511,13 @@
 
   /* ---- Tài liệu, tài liệu bán (thật) ---- */
   function loadDocs() {
-    return sb.from("free_docs").select("id,category,tag,title,pages,access").order("id").then(function (r) {
-      if (r.error) return;
-      DOCS = (r.data || []).map(function (d) { return { id: "f" + d.id, dbId: d.id, cat: d.category, tag: d.tag || d.category, title: d.title, pages: d.pages, acc: d.access }; });
+    return Promise.all([
+      sb.from("free_docs").select("id,category,tag,title,pages,access").order("id"),
+      sb.from("useful_links").select("id,title,description,position").order("position").order("id")
+    ]).then(function (R) {
+      if (R[0].error) return;
+      DOCS = (R[0].data || []).map(function (d) { return { id: "f" + d.id, dbId: d.id, cat: d.category, tag: d.tag || d.category, title: d.title, pages: d.pages, acc: d.access }; })
+        .concat((R[1].data || []).map(function (l) { return { id: "l" + l.id, dbId: l.id, kind: "link", cat: LINK_CAT, tag: "Trang web", title: l.title, desc: l.description || "" }; }));
     });
   }
   function loadShop() {
@@ -1578,7 +1607,9 @@
         sb.from("shop_videos").select("id,doc_id,title,position").order("position"),
         sb.from("free_docs").select("id,category,tag,title,pages,access,published").order("id"),
         sb.from("courses").select("id,name").eq("active", true).order("id", { ascending: false }).limit(1),
-        sb.from("file_secrets").select("owner_type,owner_id,storage_key,bunny_video_id")
+        sb.from("file_secrets").select("owner_type,owner_id,storage_key,bunny_video_id"),
+        sb.from("useful_links").select("id,title,description,published,position").order("position").order("id"),
+        sb.from("useful_link_urls").select("link_id,url")
       ]).then(function (R) {
         var sec = {}; (R[4].data || []).forEach(function (x) { sec[x.owner_type + ":" + x.owner_id] = x; });
         var S = function (t, i) { return sec[t + ":" + i] || {}; };
@@ -1624,6 +1655,34 @@
           var h = el("div", "cact"); h.appendChild(nameCell("", d.title, "free_docs", d.id, function () { reload(); loadDocs().then(renderDocs); }, false, "b")); h.appendChild(el("span", "note", d.category + " · " + (d.access === "ad" ? "xem quảng cáo" : "đọc tự do") + (d.published ? "" : " · đang ẩn")));
           h.appendChild(button("ghost sm", d.published ? "Ẩn" : "Hiện", function () { sb.from("free_docs").update({ published: !d.published }).eq("id", d.id).then(function () { reload(); loadDocs().then(renderDocs); }); }));
           c.appendChild(h); c.appendChild(pdfCell("free_doc", d.id, !!S("free_doc", d.id).storage_key, reload)); d2.appendChild(c);
+        });
+        /* Trang web học tập hữu ích */
+        var d4 = el("details", "adm"); d4.appendChild(el("summary", null, "Trang web học tập hữu ích (" + (R[5].data || []).length + ")")); body.appendChild(d4);
+        d4.appendChild(el("p", "note", "Học sinh phải xem quảng cáo mới thấy link (VIP, Học viên mở thẳng). Link phải bắt đầu bằng http:// hoặc https://"));
+        var urls = {}; (R[6].data || []).forEach(function (u) { urls[u.link_id] = u.url; });
+        var reloadLinks = function () { reload(); loadDocs().then(renderDocs); };
+        d4.appendChild(miniForm([{ k: "title", label: "Tên trang web", ph: "Tên trang web, ví dụ PubChem" }, { k: "url", label: "Link", ph: "https://…", type: "url", w: "300px" }, { k: "desc", label: "Mô tả ngắn", ph: "Mô tả ngắn (không bắt buộc)", w: "280px" }], "Thêm trang web", function (o) {
+          if (!o.title || !/^https?:\/\/\S+$/i.test(o.url)) { toast("Cần tên và link bắt đầu bằng https://"); return; }
+          sb.from("useful_links").insert({ title: o.title, description: o.desc || null, position: (R[5].data || []).length }).select("id").single().then(function (r) {
+            if (r.error) { sbErr(r.error); return; }
+            return sb.from("useful_link_urls").insert({ link_id: r.data.id, url: o.url }).then(function (x) { if (x.error) { sbErr(x.error); return; } toast("Đã thêm trang web"); reloadLinks(); });
+          });
+        }));
+        (R[5].data || []).forEach(function (l) {
+          var c = el("div", "admrow" + (l.published ? "" : " off"));
+          var h = el("div", "cact"); h.appendChild(nameCell("", l.title, "useful_links", l.id, reloadLinks, true, "b"));
+          if (!l.published) h.appendChild(el("span", "note", "đang ẩn"));
+          h.appendChild(button("ghost sm", l.published ? "Ẩn" : "Hiện", function () { sb.from("useful_links").update({ published: !l.published }).eq("id", l.id).then(reloadLinks); }));
+          c.appendChild(h);
+          var ur = el("div", "cact"); var ui = el("input", "inp"); ui.type = "url"; ui.value = urls[l.id] || ""; ui.placeholder = "https://…"; ui.style.maxWidth = "360px"; ui.setAttribute("aria-label", "Link của " + l.title);
+          ur.appendChild(ui); ur.appendChild(button("sm", "Lưu link", function () {
+            var v = ui.value.trim(); if (!/^https?:\/\/\S+$/i.test(v)) { toast("Link phải bắt đầu bằng http:// hoặc https://"); return; }
+            sb.from("useful_link_urls").upsert({ link_id: l.id, url: v }, { onConflict: "link_id" }).then(function (x) { if (x.error) { sbErr(x.error); return; } toast("Đã lưu link"); });
+          }));
+          c.appendChild(ur);
+          var dr = el("div", "cact"); var di = el("input", "inp"); di.value = l.description || ""; di.placeholder = "Mô tả ngắn"; di.style.maxWidth = "360px"; di.setAttribute("aria-label", "Mô tả của " + l.title);
+          dr.appendChild(di); dr.appendChild(button("ghost sm", "Lưu mô tả", function () { sb.from("useful_links").update({ description: di.value.trim() || null }).eq("id", l.id).then(function (x) { if (x.error) { sbErr(x.error); return; } toast("Đã lưu mô tả"); loadDocs().then(renderDocs); }); }));
+          c.appendChild(dr); d4.appendChild(c);
         });
         /* Khóa học hiện hành */
         var course = (R[3].data || [])[0];

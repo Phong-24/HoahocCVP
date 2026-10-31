@@ -881,6 +881,37 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 -- ---------------------------------------------------------------------
+-- 9. Trang web học tập hữu ích (link chỉ trả về qua hàm, sau khi xem quảng cáo)
+-- ---------------------------------------------------------------------
+create table if not exists public.useful_links (
+  id bigint generated always as identity primary key,
+  title text not null check (char_length(title) between 2 and 160),
+  description text,
+  published boolean not null default true,
+  position int not null default 0,
+  created_at timestamptz not null default now()
+);
+create table if not exists public.useful_link_urls (
+  link_id bigint primary key references useful_links(id) on delete cascade,
+  url text not null check (url ~* '^https?://[^\s]+$')
+);
+alter table useful_links enable row level security;
+alter table useful_link_urls enable row level security;
+drop policy if exists "useful_links: xem" on useful_links;
+create policy "useful_links: xem" on useful_links for select using (published or is_teacher());
+drop policy if exists "useful_links: thầy" on useful_links;
+create policy "useful_links: thầy" on useful_links for all using (is_teacher()) with check (is_teacher());
+drop policy if exists "useful_link_urls: thầy" on useful_link_urls;
+create policy "useful_link_urls: thầy" on useful_link_urls for all using (is_teacher()) with check (is_teacher());
+
+create or replace function public.open_link(p_id bigint) returns text
+language sql stable security definer set search_path = public as $$
+  select u.url from useful_link_urls u join useful_links l on l.id = u.link_id
+  where l.id = p_id and (l.published or is_teacher());
+$$;
+grant execute on function public.open_link(bigint) to anon, authenticated;
+
+-- ---------------------------------------------------------------------
 -- 8. Đặt thầy làm quản trị (chạy SAU khi thầy đã đăng nhập trang một lần):
 --    update profiles set is_teacher = true where nick = 'BIET_DANH_CUA_THAY';
 -- ---------------------------------------------------------------------
