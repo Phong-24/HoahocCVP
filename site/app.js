@@ -1153,14 +1153,25 @@
       return sb.auth.getSession().then(function (s) { return liveSession(s.data.session); }).then(function () { return ""; });
     });
   }
+  /* Danh sách tài khoản cho thầy (biệt danh + email đăng nhập) */
+  function loadAccounts() {
+    return sb.rpc("admin_accounts").then(function (r) { if (r.error) { sbErr(r.error); LV.accounts = []; } else LV.accounts = r.data || []; return LV.accounts; });
+  }
+  function findAccount(q) {
+    q = String(q || "").trim().toLowerCase(); if (!q) return null;
+    var A = LV.accounts || [];
+    return A.filter(function (p) { return (p.email || "").toLowerCase() === q; })[0] || A.filter(function (p) { return (p.nick || "").toLowerCase() === q; })[0] || null;
+  }
   function renderAdminLive(box) {
     var g = el("div", "grid2"); g.style.alignItems = "start"; box.appendChild(g);
     var c1 = el("form", "card"); c1.style.cssText = "display:grid;gap:12px"; g.appendChild(c1);
     c1.appendChild(el("h3", null, "Cấp quyền Học viên thủ công")); c1.lastChild.style.fontSize = "17px";
-    c1.appendChild(el("p", "note", "Học sinh cần đăng nhập trang ít nhất một lần để có tài khoản. Gõ đúng biệt danh của học sinh."));
-    var who = el("input", "inp"); who.id = "gWho"; who.setAttribute("list", "accList"); who.placeholder = "Biệt danh của học sinh"; fld(c1, "Tài khoản", who);
+    c1.appendChild(el("p", "note", "Học sinh cần đăng nhập trang ít nhất một lần để có tài khoản. Gõ email học sinh dùng để đăng nhập (hoặc biệt danh)."));
+    var who = el("input", "inp"); who.id = "gWho"; who.setAttribute("list", "accList"); who.placeholder = "Email đăng nhập, ví dụ hocsinh@gmail.com"; who.autocomplete = "off"; fld(c1, "Tài khoản", who);
     var dlst = el("datalist"); dlst.id = "accList"; c1.appendChild(dlst);
-    sb.from("profiles").select("id,nick,phone").order("nick").then(function (r) { (r.data || []).forEach(function (p) { var o = el("option"); o.value = p.nick; o.label = p.phone || ""; dlst.appendChild(o); }); LV.accounts = r.data || []; });
+    var whoInfo = el("p", "note"); c1.appendChild(whoInfo);
+    loadAccounts().then(function (A) { A.forEach(function (p) { var o = el("option"); o.value = p.email || p.nick; o.label = p.nick + " · " + ROLES[p.role]; dlst.appendChild(o); }); });
+    who.addEventListener("input", function () { var a = findAccount(who.value); whoInfo.textContent = a ? "→ " + a.nick + " (" + a.email + ") · hiện là " + ROLES[a.role] : ""; });
     var nextLesson = (COURSE.lessons || []).length + 1;
     var from = fld(c1, "Mở khóa học từ buổi", lessonSelect("gFrom", Math.max(1, nextLesson - 1)));
     var exWrap = el("fieldset", "field"); exWrap.appendChild(el("legend", null, "Tặng thêm buổi cũ (không bắt buộc)")); var exBox = el("div", "checks"); exWrap.appendChild(exBox); c1.appendChild(exWrap);
@@ -1174,8 +1185,8 @@
     var sbtn = el("button", "btn", "Cấp quyền"); sbtn.type = "submit"; sbtn.style.justifySelf = "start"; c1.appendChild(sbtn);
     c1.addEventListener("submit", function (e) {
       e.preventDefault(); err.hidden = true;
-      var acc = (LV.accounts || []).filter(function (p) { return p.nick === who.value.trim(); })[0];
-      if (!acc) { err.textContent = "Không tìm thấy tài khoản có biệt danh này."; err.hidden = false; return; }
+      var acc = findAccount(who.value);
+      if (!acc) { err.textContent = "Không tìm thấy tài khoản có email hoặc biệt danh này. Học sinh cần đăng nhập trang một lần trước."; err.hidden = false; return; }
       var extra = Array.prototype.map.call(exBox.querySelectorAll("input:checked"), function (x) { return +x.value; });
       sb.rpc("admin_grant_student", { p_user: acc.id, p_from: +from.value, p_extra: extra, p_expires: exp.value, p_paid: paid.value.trim(), p_note: note.value.trim() }).then(function (r) {
         if (r.error) { err.textContent = r.error.message; err.hidden = false; return; }
@@ -1209,7 +1220,7 @@
       var tb = el("tbody"); S.forEach(function (a) {
         var active = new Date(a.student_until) > new Date(), n = a.last_note || {};
         var quit = !active && a.student_to_lesson && a.student_keep_until && new Date(a.student_keep_until) > new Date();
-        var tr = el("tr"); tr.appendChild(el("td", null, a.nick + (a.phone ? " · " + a.phone : "")));
+        var tr = el("tr"); var tdn = el("td"); tdn.appendChild(el("b", null, a.nick)); if (a.email) { tdn.appendChild(el("br")); tdn.appendChild(el("span", "note", a.email)); } if (a.phone) tdn.appendChild(el("span", "note", " · " + a.phone)); tr.appendChild(tdn);
         tr.appendChild(el("td", null, "từ " + a.student_from_lesson + (a.student_to_lesson ? " đến " + (a.student_to_lesson - 1) : "") + ((a.student_extra_lessons || []).length ? " (+ " + a.student_extra_lessons.join(", ") + ")" : "")));
         tr.appendChild(el("td", null, vnDate(quit ? a.student_keep_until : a.student_until))); tr.appendChild(el("td", null, active ? "Đang học" : quit ? "Đã nghỉ từ buổi " + a.student_to_lesson : "Hết hạn"));
         tr.appendChild(el("td", null, [n.paid, n.note, n.code ? "Mã " + n.code : ""].filter(Boolean).join(" · ") || "—"));
@@ -1433,26 +1444,26 @@
     cb.appendChild(el("h3", null, "Cấm đăng bài")); cb.lastChild.style.fontSize = "17px";
     cb.appendChild(el("p", "note", "Thành viên bị cấm vẫn đăng nhập, xem bài và dùng tài liệu đã mua, nhưng không đặt câu hỏi, trả lời, bình luận hay viết đánh giá được. Hết hạn cấm thì tự mở lại."));
     var bf = el("div", "cact"); cb.appendChild(bf);
-    var bw = el("input", "inp"); bw.placeholder = "Biệt danh thành viên"; bw.setAttribute("list", "banList"); bw.setAttribute("aria-label", "Biệt danh cần cấm"); bw.style.maxWidth = "240px"; bf.appendChild(bw);
+    var bw = el("input", "inp"); bw.placeholder = "Email hoặc biệt danh"; bw.setAttribute("list", "banList"); bw.setAttribute("aria-label", "Biệt danh cần cấm"); bw.style.maxWidth = "260px"; bw.autocomplete = "off"; bf.appendChild(bw);
     var bl = el("datalist"); bl.id = "banList"; bf.appendChild(bl);
     var bsel = el("select", "inp"); bsel.style.maxWidth = "170px"; bsel.setAttribute("aria-label", "Thời hạn cấm");
     [["7", "1 tuần"], ["30", "1 tháng"], ["", "Vô thời hạn"]].forEach(function (o) { var op = el("option", null, o[1]); op.value = o[0]; bsel.appendChild(op); }); bf.appendChild(bsel);
     var accs = [];
     bf.appendChild(button("sm amber", "Cấm", function () {
-      var a = accs.filter(function (p) { return p.nick === bw.value.trim(); })[0];
-      if (!a) { toast("Không tìm thấy thành viên có biệt danh này"); return; }
+      var a = findAccount(bw.value);
+      if (!a || a.role === "teacher") { toast("Không tìm thấy thành viên có email hoặc biệt danh này"); return; }
       if (!confirm("Cấm " + a.nick + " " + bsel.options[bsel.selectedIndex].text.toLowerCase() + "?")) return;
       sb.rpc("admin_ban", { p_user: a.id, p_days: bsel.value ? +bsel.value : null }).then(function (r) { if (r.error) { sbErr(r.error); return; } toast("Đã cấm " + a.nick + " " + banText(r.data)); renderAdmin(); });
     }));
     var bt = el("div", "tablebox"); cb.appendChild(bt);
-    sb.from("profiles").select("id,nick,is_teacher,banned_until").order("nick").then(function (r) {
-      accs = (r.data || []).filter(function (p) { return !p.is_teacher; });
-      accs.forEach(function (p) { var o = el("option"); o.value = p.nick; bl.appendChild(o); });
+    loadAccounts().then(function (A) {
+      accs = A.filter(function (p) { return p.role !== "teacher"; });
+      accs.forEach(function (p) { var o = el("option"); o.value = p.email || p.nick; o.label = p.nick; bl.appendChild(o); });
       var on = accs.filter(function (p) { return isBanned(p.banned_until); });
       if (!on.length) { bt.appendChild(el("p", "note", "Hiện không có ai bị cấm.")); return; }
       var t = el("table"); var hr = el("tr"); ["Thành viên", "Bị cấm", ""].forEach(function (x) { hr.appendChild(el("th", null, x)); }); var th = el("thead"); th.appendChild(hr); t.appendChild(th);
       var tb = el("tbody"); on.forEach(function (p) {
-        var tr = el("tr"); tr.appendChild(el("td", null, p.nick)); tr.appendChild(el("td", null, banText(p.banned_until)));
+        var tr = el("tr"); tr.appendChild(el("td", null, p.nick + (p.email ? " · " + p.email : ""))); tr.appendChild(el("td", null, banText(p.banned_until)));
         var td = el("td"); var ub = el("button", "linkbtn", "Bỏ cấm"); ub.type = "button";
         ub.addEventListener("click", function () { sb.rpc("admin_ban", { p_user: p.id, p_days: 0 }).then(function (x) { if (x.error) { sbErr(x.error); return; } toast("Đã bỏ cấm " + p.nick); renderAdmin(); }); });
         td.appendChild(ub); tr.appendChild(td); tb.appendChild(tr);

@@ -1027,15 +1027,29 @@ grant execute on function public.admin_quit_student(uuid, int) to authenticated;
 drop function if exists public.admin_students();
 create or replace function public.admin_students() returns table (
   id uuid, nick text, phone text, student_until timestamptz, student_from_lesson int, student_extra_lessons int[],
-  student_to_lesson int, student_keep_until timestamptz, last_note jsonb)
+  student_to_lesson int, student_keep_until timestamptz, last_note jsonb, email text)
 language sql stable security definer set search_path = public as $$
   select p.id, p.nick, p.phone, p.student_until, p.student_from_lesson, p.student_extra_lessons,
     p.student_to_lesson, p.student_keep_until,
-    (select data from admin_log l where l.target_id = p.id order by created_at desc limit 1)
+    (select data from admin_log l where l.target_id = p.id order by created_at desc limit 1),
+    (select u.email::text from auth.users u where u.id = p.id)
   from profiles p
   where is_teacher() and p.student_until is not null
   order by p.student_until desc;
 $$;
+
+-- Thầy tìm tài khoản theo email hoặc biệt danh
+create or replace function public.admin_accounts() returns table (id uuid, nick text, email text, role text, banned_until timestamptz)
+language sql stable security definer set search_path = public as $$
+  select p.id, p.nick, u.email::text, role_of(p.id), p.banned_until
+  from profiles p join auth.users u on u.id = p.id
+  where is_teacher()
+  order by p.created_at desc
+  limit 2000;
+$$;
+revoke execute on function public.admin_accounts() from public, anon;
+grant execute on function public.admin_accounts() to authenticated;
+
 
 -- ---------------------------------------------------------------------
 -- 8. Đặt thầy làm quản trị (chạy SAU khi thầy đã đăng nhập trang một lần):
