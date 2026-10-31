@@ -730,6 +730,157 @@ revoke execute on function public.doc_status(bigint, uuid) from anon;
 grant execute on function public.doc_status(bigint, uuid) to authenticated;
 
 -- ---------------------------------------------------------------------
+-- 8. Thông báo và ảnh trong câu trả lời Hỏi đáp
+-- ---------------------------------------------------------------------
+alter table replies add column if not exists image_key text;
+alter table replies drop constraint if exists replies_image_key_owner;
+alter table replies add constraint replies_image_key_owner check (image_key is null or image_key like ('forum/' || user_id::text || '/%'));
+
+alter table profiles add column if not exists notif_read_at timestamptz not null default now();
+
+create table if not exists public.notifications (
+  id bigint generated always as identity primary key,
+  user_id uuid references profiles(id) on delete cascade,  -- null = gửi mọi thành viên, VIP, Học viên
+  kind text not null,                                      -- doc_new, reply, approved, rejected, best, renew
+  title text not null,
+  body text,
+  link text,                                               -- shop:5, free:3, topic:12, member
+  dedupe text unique,                                      -- chống gửi trùng
+  created_at timestamptz not null default now()
+);
+create index if not exists notifications_user_time on notifications (user_id, created_at desc);
+alter table notifications enable row level security;
+drop policy if exists "notifications: xem của mình" on notifications;
+create policy "notifications: xem của mình" on notifications for select
+  using (user_id = auth.uid() or (user_id is null and auth.uid() is not null and not is_teacher()));
+
+-- Tài liệu mới (đã đăng và đã có PDF) → báo mọi người, mỗi tài liệu một lần
+create or replace function public.notify_doc(p_type text, p_id bigint) returns void
+language plpgsql security definer set search_path = public as $$
+declare t text; c text; pub boolean; price int;
+begin
+  if not exists (select 1 from file_secrets where owner_type = p_type and owner_id = p_id and storage_key is not null) then return; end if;
+  if p_type = 'shop_doc' then
+    select title, category, published, shop_docs.price into t, c, pub, price from shop_docs where id = p_id;
+    if pub then
+      insert into notifications (kind, title, body, link, dedupe)
+      values ('doc_new', 'Tài liệu mới: ' || t, c || ' · ' || replace(to_char(price, 'FM999,999,999'), ',', '.') || 'đ', 'shop:' || p_id, 'doc:shop:' || p_id)
+      on conflict (dedupe) do nothing;
+    end if;
+  elsif p_type = 'free_doc' then
+    select title, category, published into t, c, pub from free_docs where id = p_id;
+    if pub then
+      insert into notifications (kind, title, body, link, dedupe)
+      values ('doc_new', 'Tài liệu mới: ' || t, c || ' · miễn phí', 'free:' || p_id, 'doc:free:' || p_id)
+      on conflict (dedupe) do nothing;
+    end if;
+  end if;
+end $$;
+revoke execute on function public.notify_doc(text, bigint) from public, anon, authenticated;
+
+create or replace function public.trg_file_notify() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.storage_key is not null and new.owner_type in ('shop_doc', 'free_doc') then perform notify_doc(new.owner_type, new.owner_id); end if;
+  return new;
+end $$;
+drop trigger if exists file_secrets_notify on file_secrets;
+create trigger file_secrets_notify after insert or update of storage_key on file_secrets for each row execute function trg_file_notify();
+
+create or replace function public.trg_doc_published() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.published and not old.published then
+    perform notify_doc(case when tg_table_name = 'shop_docs' then 'shop_doc' else 'free_doc' end, new.id);
+  end if;
+  return new;
+end $$;
+drop trigger if exists shop_docs_published on shop_docs;
+create trigger shop_docs_published after update of published on shop_docs for each row execute function trg_doc_published();
+drop trigger if exists free_docs_published on free_docs;
+create trigger free_docs_published after update of published on free_docs for each row execute function trg_doc_published();
+
+-- Có câu trả lời mới → báo người hỏi và những người đã trả lời trong câu hỏi đó
+create or replace function public.trg_reply_notify() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare t topics; who text;
+begin
+  select * into t from topics where id = new.topic_id;
+  select nick into who from profiles where id = new.user_id;
+  insert into notifications (user_id, kind, title, body, link)
+  select u, 'reply',
+    case when u = t.user_id then who || ' đã trả lời câu hỏi của bạn' else who || ' cũng trả lời câu hỏi bạn tham gia' end,
+    t.title, 'topic:' || t.id
+  from (select t.user_id as u union select user_id from replies where topic_id = t.id and not hidden) x
+  where u is not null and u <> new.user_id;
+  return new;
+end $$;
+drop trigger if exists replies_notify on replies;
+create trigger replies_notify after insert on replies for each row execute function trg_reply_notify();
+
+-- Câu hỏi được duyệt / bị từ chối; câu trả lời được chọn là đúng
+create or replace function public.trg_topic_notify() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare ru uuid;
+begin
+  if new.approved and not old.approved then
+    insert into notifications (user_id, kind, title, body, link, dedupe)
+    values (new.user_id, 'approved', 'Câu hỏi của bạn đã được duyệt', new.title, 'topic:' || new.id, 'approved:' || new.id) on conflict (dedupe) do nothing;
+  elsif new.hidden and not old.hidden and not new.approved then
+    insert into notifications (user_id, kind, title, body, link, dedupe)
+    values (new.user_id, 'rejected', 'Câu hỏi của bạn không được duyệt', new.title, 'topic:' || new.id, 'rejected:' || new.id) on conflict (dedupe) do nothing;
+  end if;
+  if new.best_reply_id is not null and new.best_reply_id is distinct from old.best_reply_id then
+    select user_id into ru from replies where id = new.best_reply_id;
+    if ru is not null and ru <> new.user_id then
+      insert into notifications (user_id, kind, title, body, link, dedupe)
+      values (ru, 'best', 'Câu trả lời của bạn được chọn là đúng', new.title, 'topic:' || new.id, 'best:' || new.best_reply_id) on conflict (dedupe) do nothing;
+    end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists topics_notify on topics;
+create trigger topics_notify after update on topics for each row execute function trg_topic_notify();
+
+-- Nhắc gia hạn VIP / Học viên khi còn 5, 3, 1 ngày (tạo khi người dùng mở trang)
+create or replace function public.sync_my_reminders() returns void
+language plpgsql security definer set search_path = public as $$
+declare p profiles; r record; d int; t int;
+begin
+  select * into p from profiles where id = auth.uid();
+  if p.id is null or p.is_teacher then return; end if;
+  for r in select 'vip' as k, 'Gói VIP' as name, p.vip_until as u union all select 'student', 'Gói Học viên', p.student_until loop
+    if r.u is null or r.u <= now() or r.u = 'infinity' then continue; end if;
+    d := ceil(extract(epoch from (r.u - now())) / 86400);
+    t := case when d <= 1 then 1 when d <= 3 then 3 when d <= 5 then 5 end;
+    if t is null then continue; end if;
+    insert into notifications (user_id, kind, title, body, link, dedupe)
+    values (p.id, 'renew', r.name || ' sắp hết hạn (còn ' || d || ' ngày)',
+            'Hết hạn ngày ' || to_char(r.u at time zone 'Asia/Ho_Chi_Minh', 'DD/MM/YYYY') || '. Gia hạn để không bị gián đoạn.',
+            'member', 'renew:' || r.k || ':' || p.id || ':' || to_char(r.u, 'YYYYMMDD') || ':' || t)
+    on conflict (dedupe) do nothing;
+  end loop;
+end $$;
+revoke execute on function public.sync_my_reminders() from public, anon;
+grant execute on function public.sync_my_reminders() to authenticated;
+
+create or replace function public.mark_notifs_read() returns timestamptz
+language sql security definer set search_path = public as $$
+  update profiles set notif_read_at = now() where id = auth.uid() returning notif_read_at;
+$$;
+revoke execute on function public.mark_notifs_read() from public, anon;
+grant execute on function public.mark_notifs_read() to authenticated;
+
+-- Thầy: số mục đang chờ xử lý
+create or replace function public.admin_pending_counts() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select case when is_teacher() then jsonb_build_object(
+    'topics', (select count(*) from topics where not approved and not hidden),
+    'reviews', (select count(*) from reviews where not approved),
+    'reports', (select count(*) from reports where not resolved)) end;
+$$;
+
+-- ---------------------------------------------------------------------
 -- 8. Đặt thầy làm quản trị (chạy SAU khi thầy đã đăng nhập trang một lần):
 --    update profiles set is_teacher = true where nick = 'BIET_DANH_CUA_THAY';
 -- ---------------------------------------------------------------------

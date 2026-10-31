@@ -2,6 +2,7 @@
   Ảnh đính kèm câu hỏi Hỏi đáp (lưu trong kho R2, thư mục forum/).
   PUT /api/forum-image                 thân yêu cầu = ảnh (PNG, JPG, WEBP, GIF; tối đa 1.000.000 byte) → { key }
   GET /api/forum-image?topic=123       trả ảnh của câu hỏi nếu người xem được phép thấy câu hỏi đó
+  GET /api/forum-image?reply=456       trả ảnh của câu trả lời (theo quyền xem câu trả lời)
 */
 import { json, tokenOf, getUser, rpcAsUser, asUser, one } from "../_lib/common.js";
 
@@ -35,10 +36,11 @@ export async function onRequestPut({ request, env }) {
 
 export async function onRequestGet({ request, env }) {
   if (!env.FILES) return json({ error: "Chưa cấu hình kho file (R2)." }, 503);
-  const id = Number(new URL(request.url).searchParams.get("topic"));
+  const q = new URL(request.url).searchParams;
+  const isReply = q.has("reply"), id = Number(q.get(isReply ? "reply" : "topic"));
   if (!id) return json({ error: "Thiếu mã câu hỏi" }, 400);
-  // Đọc theo quyền của người xem: câu hỏi chưa duyệt chỉ người hỏi và thầy thấy
-  const t = await one(await asUser(env, tokenOf(request), `/rest/v1/topics?id=eq.${id}&select=image_key`));
+  // Đọc theo quyền của người xem: câu hỏi chưa duyệt chỉ người hỏi và thầy thấy; câu trả lời bị ẩn chỉ thầy thấy
+  const t = await one(await asUser(env, tokenOf(request), `/rest/v1/${isReply ? "replies" : "topics"}?id=eq.${id}&select=image_key`));
   if (!t || !t.image_key || !t.image_key.startsWith("forum/")) return json({ error: "Không có ảnh" }, 404);
   const obj = await env.FILES.get(t.image_key);
   if (!obj) return json({ error: "Không tìm thấy ảnh" }, 404);
