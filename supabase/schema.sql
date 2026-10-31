@@ -646,7 +646,8 @@ begin
   return v_code;
 end $$;
 
--- Danh sách học viên cho trang Quản trị
+-- Danh sách học viên cho trang Quản trị (bản đầy đủ ở mục 10)
+drop function if exists public.admin_students();
 create or replace function public.admin_students() returns table (
   id uuid, nick text, phone text, student_until timestamptz, student_from_lesson int, student_extra_lessons int[], last_note jsonb)
 language sql stable security definer set search_path = public as $$
@@ -933,6 +934,108 @@ language sql stable security definer set search_path = public as $$
   where l.id = p_id and (l.published or is_teacher());
 $$;
 grant execute on function public.open_link(bigint) to anon, authenticated;
+
+-- ---------------------------------------------------------------------
+-- 10. Học viên vào giữa khóa / nghỉ giữa chừng
+--   Vào giữa khóa từ buổi k: không xem buổi < k (khóa hiện hành và tài liệu "Buổi N"
+--   của 2 mục Bài giảng lý thuyết, Bài tập theo chương), trừ buổi thầy tặng.
+--   Nghỉ từ buổi q: tài khoản về Thành viên, không xem từ buổi q trở đi;
+--   các buổi đã học (từ k đến q-1) vẫn xem được đến hết hạn gói đã đóng.
+-- ---------------------------------------------------------------------
+alter table profiles add column if not exists student_to_lesson int;          -- nghỉ từ buổi này (không tính)
+alter table profiles add column if not exists student_keep_until timestamptz; -- giữ quyền các buổi đã học đến ngày này
+
+create or replace function public.student_has_lesson(uid uuid, n int) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare p profiles;
+begin
+  select * into p from profiles where id = uid;
+  if p.id is null or n is null then return false; end if;
+  if not (p.student_until > now() or (p.student_keep_until > now() and p.student_to_lesson is not null)) then return false; end if;
+  if n = any (p.student_extra_lessons) then return true; end if;
+  if n < p.student_from_lesson then return false; end if;
+  if p.student_to_lesson is not null and n >= p.student_to_lesson then return false; end if;
+  return true;
+end $$;
+
+create or replace function public.doc_status(p_doc bigint, uid uuid default auth.uid()) returns text
+language plpgsql stable security definer set search_path = public as $$
+declare d shop_docs; a doc_access; r text; n int;
+begin
+  select * into d from shop_docs where id = p_doc;
+  r := role_of(uid);
+  if r = 'teacher' then return 'active'; end if;
+  if d.category in ('Bài giảng lý thuyết và bài tập ứng dụng', 'Bài tập theo chương') then
+    n := (regexp_match(coalesce(d.tag, ''), '^Buổi ([0-9]+)$'))[1]::int;
+    if n is null and r = 'student' then return 'student_free'; end if;
+    if n is not null and student_has_lesson(uid, n) then return 'student_free'; end if;
+  end if;
+  select * into a from doc_access where user_id = uid and doc_id = p_doc;
+  if not found then return 'none'; end if;
+  return case when a.expires_at > now() then 'active' else 'expired' end;
+end $$;
+
+create or replace function public.lesson_open(p_lesson bigint, uid uuid default auth.uid()) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare l lessons;
+begin
+  select * into l from lessons where id = p_lesson;
+  if role_of(uid) = 'teacher' then return true; end if;
+  if exists (select 1 from lesson_purchases where user_id = uid and lesson_id = p_lesson) and role_of(uid) = 'student' then return true; end if;
+  return student_has_lesson(uid, l.n);
+end $$;
+
+create or replace function public.admin_grant_student(p_user uuid, p_from int, p_extra int[], p_expires date, p_paid text, p_note text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_teacher() then raise exception 'Chỉ thầy được cấp quyền'; end if;
+  update profiles set student_until = (p_expires + 1)::timestamptz, student_from_lesson = p_from,
+         student_extra_lessons = coalesce(p_extra, '{}'), student_ever = true,
+         student_to_lesson = null, student_keep_until = null where id = p_user;
+  insert into admin_log (admin_id, target_id, action, data)
+    values (auth.uid(), p_user, 'grant_student', jsonb_build_object('from', p_from, 'extra', p_extra, 'expires', p_expires, 'paid', p_paid, 'note', p_note));
+end $$;
+
+-- Thu hồi hẳn (không giữ buổi nào)
+create or replace function public.admin_revoke_student(p_user uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_teacher() then raise exception 'Chỉ thầy được thu hồi'; end if;
+  update profiles set student_until = now(), student_to_lesson = null, student_keep_until = null where id = p_user;
+  insert into admin_log (admin_id, target_id, action) values (auth.uid(), p_user, 'revoke_student');
+end $$;
+
+-- Học viên nghỉ từ buổi p_lesson: về Thành viên, giữ các buổi đã học đến hết hạn gói
+create or replace function public.admin_quit_student(p_user uuid, p_lesson int) returns void
+language plpgsql security definer set search_path = public as $$
+declare p profiles;
+begin
+  if not is_teacher() then raise exception 'Chỉ thầy được làm việc này'; end if;
+  select * into p from profiles where id = p_user;
+  if p.id is null then raise exception 'Không tìm thấy tài khoản'; end if;
+  if p_lesson is null or p_lesson < 1 then raise exception 'Số buổi không hợp lệ'; end if;
+  update profiles set
+    student_keep_until = greatest(coalesce(p.student_keep_until, p.student_until), p.student_until),
+    student_to_lesson = p_lesson,
+    student_until = least(p.student_until, now())
+  where id = p_user;
+  insert into admin_log (admin_id, target_id, action, data) values (auth.uid(), p_user, 'quit_student', jsonb_build_object('from_lesson', p_lesson));
+end $$;
+revoke execute on function public.admin_quit_student(uuid, int) from public, anon;
+grant execute on function public.admin_quit_student(uuid, int) to authenticated;
+
+drop function if exists public.admin_students();
+create or replace function public.admin_students() returns table (
+  id uuid, nick text, phone text, student_until timestamptz, student_from_lesson int, student_extra_lessons int[],
+  student_to_lesson int, student_keep_until timestamptz, last_note jsonb)
+language sql stable security definer set search_path = public as $$
+  select p.id, p.nick, p.phone, p.student_until, p.student_from_lesson, p.student_extra_lessons,
+    p.student_to_lesson, p.student_keep_until,
+    (select data from admin_log l where l.target_id = p.id order by created_at desc limit 1)
+  from profiles p
+  where is_teacher() and p.student_until is not null
+  order by p.student_until desc;
+$$;
 
 -- ---------------------------------------------------------------------
 -- 8. Đặt thầy làm quản trị (chạy SAU khi thầy đã đăng nhập trang một lần):
