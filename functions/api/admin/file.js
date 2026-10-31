@@ -1,6 +1,6 @@
 /*
   Thầy tải file PDF lên kho R2.
-  PUT /api/admin/file?type=shop_doc|free_doc|lesson_file&id=123   (thân yêu cầu = nội dung PDF)
+  PUT /api/admin/file?type=shop_doc|shop_file|free_doc|lesson_file&id=123   (thân yêu cầu = nội dung PDF)
 */
 import { json, tokenOf, isTeacher, asServer } from "../../_lib/common.js";
 
@@ -10,7 +10,7 @@ export async function onRequestPut({ request, env }) {
   if (!(await isTeacher(env, token))) return json({ error: "Chỉ thầy được tải file lên." }, 403);
   const url = new URL(request.url);
   const type = url.searchParams.get("type"), id = Number(url.searchParams.get("id"));
-  if (!["shop_doc", "free_doc", "lesson_file"].includes(type) || !id) return json({ error: "Tham số không hợp lệ" }, 400);
+  if (!["shop_doc", "shop_file", "free_doc", "lesson_file"].includes(type) || !id) return json({ error: "Tham số không hợp lệ" }, 400);
   const ct = request.headers.get("Content-Type") || "";
   if (!ct.includes("pdf")) return json({ error: "Chỉ nhận file PDF." }, 415);
   const key = `${type}/${id}/${Date.now()}.pdf`;

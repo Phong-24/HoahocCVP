@@ -394,6 +394,15 @@ create table if not exists public.shop_docs (
 );
 -- Link xem thử (ai cũng xem được, chỉ xem online)
 alter table public.shop_docs add column if not exists preview_url text;
+-- Thứ tự hiển thị trong mục (ví dụ số buổi)
+alter table public.shop_docs add column if not exists position int not null default 0;
+-- File PDF thứ hai trở đi của một tài liệu bán (ví dụ đáp án)
+create table if not exists public.shop_doc_files (
+  id bigint generated always as identity primary key,
+  doc_id bigint not null references shop_docs(id) on delete cascade,
+  title text not null,
+  position int not null default 0
+);
 create table if not exists public.shop_videos (
   id bigint generated always as identity primary key,
   doc_id bigint not null references shop_docs(id) on delete cascade,
@@ -402,7 +411,7 @@ create table if not exists public.shop_videos (
 );
 -- Phần bí mật: đường dẫn file trong kho lưu trữ, mã video Bunny (chỉ máy chủ đọc)
 create table if not exists public.file_secrets (
-  owner_type text not null check (owner_type in ('free_doc', 'shop_doc', 'shop_video', 'lesson_file')),
+  owner_type text not null,
   owner_id bigint not null,
   storage_key text,       -- đường dẫn file PDF trên Cloudflare R2
   bunny_video_id text,    -- mã video trên Bunny Stream
@@ -424,6 +433,9 @@ create table if not exists public.downloads (
 alter table free_docs enable row level security;
 alter table shop_docs enable row level security;
 alter table shop_videos enable row level security;
+alter table shop_doc_files enable row level security;
+alter table file_secrets drop constraint if exists file_secrets_owner_type_check;
+alter table file_secrets add constraint file_secrets_owner_type_check check (owner_type in ('free_doc', 'shop_doc', 'shop_file', 'shop_video', 'lesson_file'));
 alter table file_secrets enable row level security;
 alter table doc_access enable row level security;
 alter table downloads enable row level security;
@@ -436,6 +448,10 @@ drop policy if exists "shop_docs: xem" on shop_docs;
 create policy "shop_docs: xem" on shop_docs for select using (published or is_teacher());
 drop policy if exists "shop_docs: thầy" on shop_docs;
 create policy "shop_docs: thầy" on shop_docs for all using (is_teacher()) with check (is_teacher());
+drop policy if exists "shop_doc_files: xem tên" on shop_doc_files;
+create policy "shop_doc_files: xem tên" on shop_doc_files for select using (true);
+drop policy if exists "shop_doc_files: thầy" on shop_doc_files;
+create policy "shop_doc_files: thầy" on shop_doc_files for all using (is_teacher()) with check (is_teacher());
 drop policy if exists "shop_videos: xem tên" on shop_videos;
 create policy "shop_videos: xem tên" on shop_videos for select using (true);
 drop policy if exists "shop_videos: thầy" on shop_videos;

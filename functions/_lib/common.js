@@ -59,8 +59,8 @@ export async function canAccess(env, token, type, id) {
     const s = await rpcAsUser(env, token, "doc_status", { p_doc: id });
     return s === "active" || s === "student_free";
   }
-  if (type === "shop_video") {
-    const v = await one(await asUser(env, token, `/rest/v1/shop_videos?id=eq.${id}&select=doc_id`));
+  if (type === "shop_video" || type === "shop_file") {
+    const v = await one(await asUser(env, token, `/rest/v1/${type === "shop_video" ? "shop_videos" : "shop_doc_files"}?id=eq.${id}&select=doc_id`));
     if (!v) return false;
     const s = await rpcAsUser(env, token, "doc_status", { p_doc: v.doc_id });
     return s === "active" || s === "student_free";
@@ -80,4 +80,4 @@ export async function isTeacher(env, token) {
   return !!(p && p.is_teacher);
 }
 
-export const TYPES = ["free_doc", "shop_doc", "shop_video", "lesson_file"];
+export const TYPES = ["free_doc", "shop_doc", "shop_file", "shop_video", "lesson_file"];
