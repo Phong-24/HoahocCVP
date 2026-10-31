@@ -689,7 +689,7 @@
     var bn = $("shopBanner"); bn.innerHTML = "";
     var rule = " Mỗi tài liệu mở được dùng 12 tháng; gia hạn bằng 50% giá gốc.";
     if (st.role === "student") bn.appendChild(el("span", null, "Gói Học viên: mở miễn phí mục Bài giảng lý thuyết và bài tập ứng dụng, Bài tập theo chương" + (LIVE && st.win && st.win.from > 1 ? " từ buổi " + st.win.from + " (buổi bạn vào học); các buổi trước đó và các mục khác giảm 50% khi mua." : "; các mục khác giảm 50% khi mua.") + rule));
-    else if (LIVE && st.win && st.win.kept) bn.appendChild(el("span", null, "Bạn đã nghỉ khóa từ buổi " + st.win.to + ": vẫn xem được tài liệu, video buổi " + st.win.from + "–" + (st.win.to - 1) + " đến " + vnDate(st.win.keepUntil) + ". Các buổi khác mua lẻ như thành viên." + rule));
+    else if (LIVE && st.win && st.win.kept) bn.appendChild(el("span", null, "Bạn đã nghỉ khóa từ buổi " + st.win.to + ": vẫn xem được tài liệu, video " + lessonRange(st.win.from, st.win.to - 1) + " đến " + vnDate(st.win.keepUntil) + ". Các buổi khác mua lẻ như thành viên." + rule));
     else if (st.role === "vip") bn.appendChild(el("span", null, "Gói VIP: giảm 15% khi mua tài liệu." + rule));
     else { bn.appendChild(el("span", null, "Mua lẻ từng tài liệu, dùng trong 12 tháng. VIP giảm 15%. Học viên mở miễn phí bài giảng và bài tập theo chương, các mục khác giảm 50%.")); var a = el("a", "btn sm ghost", "Xem các gói"); a.href = "#thanh-vien"; bn.appendChild(a); }
     catChips("shopCats", SHOP_CATS, SHOP, shopCat, function (c) { shopCat = c; renderShop(); });
@@ -768,6 +768,7 @@
     if (w.to && n >= w.to) return false;
     return true;
   }
+  function lessonRange(a, b) { return b < a ? "không buổi nào" : a === b ? "buổi " + a : "buổi " + a + "–" + b; }
   function docLesson(d) { var m = /^Buổi\s+(\d+)$/.exec(d.tag || ""); return m ? +m[1] : null; }
   function studentDocOpen(d) {
     if (STUDENT_FREE.indexOf(d.cat) < 0) return false;
@@ -805,7 +806,7 @@
     var bx = el("div", "mrow"); bx.style.cssText = "justify-content:flex-start;align-items:center";
     if (st.role === "teacher") bx.appendChild(el("span", "chip", "Thầy: xem toàn bộ · quản lý ở trang Quản trị"));
     else if (LIVE && st.win && st.win.kept) {
-      bx.appendChild(el("span", "chip amber", "Đã nghỉ từ buổi " + st.win.to + " · vẫn xem được buổi " + st.win.from + "–" + (st.win.to - 1) + " đến " + vnDate(st.win.keepUntil)));
+      bx.appendChild(el("span", "chip amber", "Đã nghỉ từ buổi " + st.win.to + " · vẫn xem được " + lessonRange(st.win.from, st.win.to - 1) + " đến " + vnDate(st.win.keepUntil)));
     }
     else if (st.role === "student") {
       if (st.access) bx.appendChild(el("span", "chip amber", "Học viên vào giữa khóa · mở từ buổi " + st.access.from + (st.access.extra.length ? " + buổi " + st.access.extra.join(", ") : "") + " · hết hạn " + vnDate(st.access.exp)));
@@ -1222,7 +1223,7 @@
           var qb = el("button", "linkbtn", "Nghỉ từ buổi"); qb.type = "button"; qb.style.color = "var(--amber)";
           qb.addEventListener("click", function () {
             var q = parseInt(qn.value, 10); if (!(q >= 1)) { toast("Nhập số buổi bắt đầu nghỉ"); qn.focus(); return; }
-            if (!confirm(a.nick + " nghỉ từ buổi " + q + "? Tài khoản về Thành viên, chỉ còn xem được buổi " + a.student_from_lesson + "–" + (q - 1) + " đến " + vnDate(a.student_until) + ".")) return;
+            if (!confirm(a.nick + " nghỉ từ buổi " + q + "? Tài khoản về Thành viên, chỉ còn xem được " + lessonRange(a.student_from_lesson, q - 1) + " đến " + vnDate(a.student_until) + ".")) return;
             sb.rpc("admin_quit_student", { p_user: a.id, p_lesson: q }).then(function (x) { if (x.error) { sbErr(x.error); return; } toast("Đã chuyển " + a.nick + " về Thành viên"); renderAdmin(); });
           });
           qbox.appendChild(qn); qbox.appendChild(qb); td.appendChild(qbox);
