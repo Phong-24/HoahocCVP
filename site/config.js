@@ -9,9 +9,9 @@ window.HHTP_CONFIG = {
 
   /* Link Google Form cho 3 mục Đăng ký học */
   forms: {
-    online: "",
-    "1-1": "",
-    "doi-tuyen": ""
+    online: "https://forms.gle/Lym2NQgAGXePTkwT7",
+    "1-1": "https://forms.gle/HhAJoEd64b5nnxuw5",
+    "doi-tuyen": "https://forms.gle/Ave9sJSTwJ7sx9uK7"
   },
 
   /* Tài khoản nhận tiền (hiện trên mã QR). bin: mã ngân hàng theo VietQR, ví dụ MB = 970422, Vietcombank = 970436 */
