@@ -778,10 +778,17 @@ begin
   if not exists (select 1 from file_secrets where owner_type = p_type and owner_id = p_id and storage_key is not null) then return; end if;
   if p_type = 'shop_doc' then
     select title, category, published, shop_docs.price into t, c, pub, price from shop_docs where id = p_id;
-    if pub then
-      insert into notifications (kind, title, body, link, dedupe)
-      values ('doc_new', 'Tài liệu mới: ' || t, c || ' · ' || replace(to_char(price, 'FM999,999,999'), ',', '.') || 'đ', 'shop:' || p_id, 'doc:shop:' || p_id)
-      on conflict (dedupe) do nothing;
+    if pub and not exists (select 1 from notifications where dedupe = 'doc:shop:' || p_id) then
+      -- Nhiều tài liệu cùng mục trong một ngày thì gộp thành một thông báo
+      if exists (select 1 from notifications where dedupe like 'doc:shop:%' and body like c || ' ·%' and created_at > now() - interval '1 day') then
+        insert into notifications (kind, title, body, link, dedupe)
+        values ('doc_new', 'Nhiều tài liệu mới trong mục ' || c, c || ' · bấm để xem', 'shopcat:' || c, 'doccat:' || c || ':' || to_char(now() at time zone 'Asia/Ho_Chi_Minh', 'YYYYMMDD'))
+        on conflict (dedupe) do update set created_at = now();
+      else
+        insert into notifications (kind, title, body, link, dedupe)
+        values ('doc_new', 'Tài liệu mới: ' || t, c || ' · ' || replace(to_char(price, 'FM999,999,999'), ',', '.') || 'đ', 'shop:' || p_id, 'doc:shop:' || p_id)
+        on conflict (dedupe) do nothing;
+      end if;
     end if;
   elsif p_type = 'free_doc' then
     select title, category, published into t, c, pub from free_docs where id = p_id;
