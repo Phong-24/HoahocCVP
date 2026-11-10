@@ -212,7 +212,7 @@
     $("tabBasic").setAttribute("aria-selected", String(tab === "basic"));
     $("tabAdv").setAttribute("aria-selected", String(tab === "adv"));
     var bn = $("exBanner"); bn.innerHTML = "";
-    if (logged()) bn.appendChild(el("span", null, "Bài làm của " + st.nick + " được ghi nhớ: lần sau mở lại sẽ tiếp tục từ trang có bài chưa làm. Đã làm đúng " + st.correct + " bài."));
+    if (logged()) bn.appendChild(el("span", null, "Bài làm của " + st.nick + " được ghi nhớ: lần sau mở lại sẽ tiếp tục từ trang có bài chưa làm. Đã làm đúng " + st.correct + " bài." + (LIVE && tab === "adv" && st.role === "member" ? " Thành viên xem tối đa " + ADV_LIMIT + " bài nâng cao mỗi ngày" + (advUsed ? " (hôm nay đã xem " + advUsed + ")" : "") + "." : "")));
     else { bn.appendChild(el("span", null, "Bạn đang là khách: bài làm không được lưu, lần sau mở lại sẽ bắt đầu từ đầu. Đăng nhập để lưu bài làm và tham gia thảo luận.")); bn.appendChild(button("sm", "Đăng nhập", function () { showLogin(); })); }
     var list = $("qlist"); list.innerHTML = "";
     var basicPool = BASIC.map(function (q, i) { q.no = i + 1; q.lv = "basic"; return q; });
@@ -255,11 +255,61 @@
     var doneCount = items.filter(isDone).length;
     var head2 = el("div", "pghead"); head2.appendChild(el("span", "note", "Trang " + (cur + 1) + "/" + pages.length + " · " + (tab === "basic" || searching ? "5 bài mỗi trang" : "1–2 bài mỗi trang") + (logged() ? " · đã làm " + doneCount + "/" + items.length : "")));
     list.appendChild(head2);
-    pages[cur].forEach(function (q) { list.appendChild(q.essay ? essayCard(q, q.no - 1) : qCard(q, q.no - 1, q.lv === "adv")); });
+    var needOpen = [];
+    pages[cur].forEach(function (q) {
+      if (LIVE && q.gated) {
+        if (!logged()) { list.appendChild(advLockCard(q, "login")); return; }
+        if (q.lock) { list.appendChild(advLockCard(q, q.lock)); return; }
+        needOpen.push(q); var w = el("article", "card note", "Đang mở bài nâng cao…"); list.appendChild(w); return;
+      }
+      list.appendChild(q.essay ? essayCard(q, q.no - 1) : qCard(q, q.no - 1, q.lv === "adv"));
+    });
+    if (needOpen.length) openAdvSeq(needOpen);
     if (pages.length > 1) list.appendChild(pager(pages.length, cur, go));
     if (!searching && cur === pages.length - 1) list.appendChild(el("p", "note", "Bài mới thầy đăng sẽ được thêm vào các trang sau, không chèn vào giữa bài cũ."));
   }
 
+  /* Bài nâng cao: thành viên xem tối đa 5 bài/ngày; bài thứ 6 bị làm mờ */
+  var ADV_LIMIT = 5, advUsed = 0, advBusy = false;
+  function openAdvSeq(list) {
+    if (advBusy) return; advBusy = true;
+    list.reduce(function (p, q) {
+      return p.then(function () {
+        if (!q.gated || q.lock) return;
+        return sb.rpc("open_adv", { p_ex: q.db }).then(function (r) {
+          if (r.error) { q.lock = "error"; return; }
+          var d = r.data || {};
+          if (d.locked) { q.lock = d.locked; if (d.used != null) advUsed = d.used; return; }
+          advUsed = d.used || advUsed;
+          if (q.essay) { q.text = d.stem; q.de = d.images || []; q.ask = d.ask; } else { q.t = d.stem; q.o = d.options || []; }
+          q.gated = false;
+        });
+      });
+    }, Promise.resolve()).then(function () { advBusy = false; renderEx(); });
+  }
+  function advLockCard(q, why) {
+    var c = el("article", "card q advlock");
+    var top = el("div", "q-top"); top.appendChild(el("span", "lvl adv", "Nâng cao · Câu " + q.no)); top.appendChild(el("span", "note", q.g)); c.appendChild(top);
+    var fake = el("div", "blur");
+    fake.appendChild(el("p", "q-text", "Cho sơ đồ chuyển hóa các chất hữu cơ sau. Xác định công thức cấu tạo của A, B, C, D và giải thích cơ chế của phản ứng tạo thành sản phẩm chính trong điều kiện đã cho."));
+    var o = el("div", "opts"); ["A", "B", "C", "D"].forEach(function (k) { var b = el("div", "opt"); b.appendChild(el("span", "k", k)); b.appendChild(el("span", null, "Phương án trả lời của câu hỏi")); o.appendChild(b); }); fake.appendChild(o);
+    c.appendChild(fake);
+    var ov = el("div", "over");
+    if (why === "login") {
+      ov.appendChild(el("b", null, "Đăng nhập để xem bài nâng cao"));
+      ov.appendChild(el("p", "note", "Tài khoản miễn phí được xem " + ADV_LIMIT + " bài nâng cao mỗi ngày. VIP và Học viên xem không giới hạn."));
+      ov.appendChild(button("sm", "Đăng nhập", function () { showLogin("Đăng nhập để xem bài nâng cao"); }));
+    } else if (why === "limit") {
+      ov.appendChild(el("b", null, "Hôm nay bạn đã xem đủ " + ADV_LIMIT + " bài nâng cao"));
+      ov.appendChild(el("p", "note", "Thành viên miễn phí xem tối đa " + ADV_LIMIT + " bài nâng cao mỗi ngày. Quay lại vào ngày mai, hoặc nâng cấp VIP để xem không giới hạn. Điểm danh đủ 30 ngày được tặng 15 ngày VIP."));
+      var r = el("div", "cact"); r.style.justifyContent = "center";
+      r.appendChild(button("amber sm", "Nâng cấp VIP", function () { location.hash = "#thanh-vien"; }));
+      r.appendChild(button("ghost sm", "Điểm danh", function () { location.hash = "#trang-chu"; focusEl("#checkinBox .card"); }));
+      ov.appendChild(r);
+    } else { ov.appendChild(el("p", "note", "Không mở được bài này. Tải lại trang để thử lại.")); }
+    c.appendChild(ov);
+    return c;
+  }
   function qCard(q, i, adv) {
     var c = el("article", "card q");
     var top = el("div", "q-top"); var lab = el("span", "lvl" + (adv ? " adv" : ""), (adv ? "Nâng cao" : "Cơ bản") + " · Câu " + (i + 1)); if (q.isNew) { var nw = el("span", "badge ok", "Mới"); nw.style.marginLeft = "6px"; lab.appendChild(nw); } top.appendChild(lab);
@@ -1064,14 +1114,14 @@
   function mapExercises(rows) {
     var b = [], a = [], e = [];
     rows.forEach(function (x) {
-      var q = { id: "x" + x.id, db: x.id, g: x.category, isNew: x.is_new };
+      var q = { id: "x" + x.id, db: x.id, g: x.category, isNew: x.is_new, gated: x.level === "adv" && x.stem == null };
       if (x.kind === "essay") { q.essay = true; q.name = (x.title || "").replace(/^Tổng hợp\s+/, "") || "Bài " + x.id; q.text = x.stem; q.de = x.images || []; q.ask = x.ask; e.push(q); }
-      else { q.t = x.stem; q.o = x.options || []; (x.level === "basic" ? b : a).push(q); }
+      else { q.t = x.stem || ""; q.o = x.options || []; q.title = x.title; (x.level === "basic" ? b : a).push(q); }
     });
     BASIC = b; ADV = a; ESSAY = e;
   }
   function loadExercises() {
-    return sb.from("exercises").select("id,level,category,kind,title,stem,options,images,ask,is_new").order("id").then(function (r) { if (r.error) { sbErr(r.error, "Không tải được bài tập"); return; } mapExercises(r.data || []); });
+    return sb.rpc("list_exercises").then(function (r) { if (r.error) { sbErr(r.error, "Không tải được bài tập"); return; } mapExercises(r.data || []); });
   }
   function fetchKey(q) {
     if (q._k) return; q._k = true;
@@ -1143,8 +1193,8 @@
     for (var k in base) st[k] = base[k];
     st.exPage = keepPage;
     BASIC.concat(ADV, ESSAY).forEach(function (q) { delete q._k; delete q._s; });
-    NT.items = []; NT.pending = null;
-    var p = (u ? loadMine(u.id) : Promise.resolve()).then(function () { return Promise.all([loadForum(), loadReviews(), loadShop(), u ? loadNotifs(true) : null]); });
+    NT.items = []; NT.pending = null; CK.loaded = false; CK.days = []; advUsed = 0;
+    var p = (u ? loadMine(u.id) : Promise.resolve()).then(function () { return Promise.all([loadForum(), loadReviews(), loadShop(), loadExercises(), u ? loadNotifs(true) : null]); });
     return p.then(function () { pageNow = {}; renderAll(); if (u && LV.after) { var f = LV.after; LV.after = null; f(); } });
   }
   function liveRedeem(code) {
@@ -1903,9 +1953,88 @@
     a.appendChild(c);
   }
   function renderAds() { document.querySelectorAll(".ad").forEach(function (x) { x.hidden = noAds(); }); }
+  /* ================= tìm kiếm toàn trang ================= */
+  function searchIndex() {
+    var out = [];
+    var snip = function (t) { t = String(t || "").replace(/\s+/g, " ").trim(); return t.length > 110 ? t.slice(0, 110) + "…" : t; };
+    BASIC.forEach(function (q, i) { out.push({ g: "Bài tập", title: "Cơ bản · Câu " + (i + 1) + " · " + q.g, sub: snip(q.t), hay: [q.t, (q.o || []).join(" "), q.g], go: function (qq) { goEx(qq); } }); });
+    ADV.concat(ESSAY).forEach(function (q, i) { out.push({ g: "Bài tập", title: "Nâng cao · Câu " + (i + 1) + " · " + q.g, sub: snip(q.name || q.title || q.t || q.text || "Bài nâng cao"), hay: [q.t, q.text, q.name, q.title, (q.o || []).join(" "), q.g], go: function (qq) { goEx(qq); } }); });
+    SHOP.forEach(function (d) { out.push({ g: "Mua tài liệu", title: (d.tag ? d.tag + " · " : "") + d.title, sub: d.cat + " · " + vnd(d.price), hay: [d.title, d.tag, d.cat], go: function () { if (LIVE && d.dbId) goLink("shop:" + d.dbId); else { shopCat = "Tất cả"; location.hash = "#mua-tai-lieu"; renderShop(); focusEl('[data-doc="' + d.id + '"]'); } } }); });
+    DOCS.forEach(function (d) {
+      if (d.kind === "link") out.push({ g: "Trang web học tập", title: d.title, sub: d.desc || "", hay: [d.title, d.desc], go: function () { docCat = LINK_CAT; location.hash = "#tai-lieu"; renderDocs(); focusEl('[data-doc="' + d.id + '"]'); } });
+      else out.push({ g: "Tài liệu học tập", title: d.title, sub: d.cat, hay: [d.title, d.tag, d.cat], go: function () { if (LIVE && d.dbId) goLink("free:" + d.dbId); else { docCat = "Tất cả"; location.hash = "#tai-lieu"; renderDocs(); focusEl('[data-doc="' + d.id + '"]'); } } });
+    });
+    (COURSE.lessons || []).forEach(function (l) { out.push({ g: "Khóa học hiện hành", title: "Buổi " + l.n + " · " + l.t, sub: (l.docs || []).concat(l.vids || []).join(" · "), hay: [l.t, (l.docs || []).join(" "), (l.vids || []).join(" ")], go: function () { location.hash = "#khoa-hoc"; } }); });
+    allTopics().forEach(function (t) { out.push({ g: "Hỏi đáp", title: t.title, sub: t.g + " · " + snip(t.body), hay: [t.title, t.body, t.g], go: function () { if (LIVE) goLink("topic:" + t.id); else { forumOpen = t.id; location.hash = "#hoi-dap"; renderForum(); } } }); });
+    return out;
+  }
+  function goEx(q) { exQ = q; var i = $("exSearch"); if (i) i.value = q; pageNow.search = 0; location.hash = "#bai-tap"; renderEx(); }
+  var GROUP_ORDER = ["Bài tập", "Mua tài liệu", "Tài liệu học tập", "Trang web học tập", "Khóa học hiện hành", "Hỏi đáp"];
+  function runSearch(q) {
+    var box = $("searchRes"); box.innerHTML = ""; $("searchQ").value = q;
+    var words = fold(q).trim().split(/\s+/).filter(Boolean);
+    if (!words.length) { box.appendChild(el("p", "note", "Nhập từ khóa để tìm.")); return; }
+    var hits = searchIndex().filter(function (it) { var h = fold(it.hay.join(" ")); return words.every(function (w) { return h.indexOf(w) >= 0; }); });
+    if (!hits.length) { box.appendChild(el("p", "card note", "Không tìm thấy kết quả cho “" + q + "”. Thử từ khóa ngắn hơn hoặc gõ không dấu.")); return; }
+    box.appendChild(el("p", "note", "Tìm thấy " + hits.length + " kết quả cho “" + q + "”."));
+    GROUP_ORDER.forEach(function (g) {
+      var hs = hits.filter(function (h) { return h.g === g; }); if (!hs.length) return;
+      var sec = el("div", "sres"); sec.appendChild(el("h3", null, g + " (" + hs.length + ")"));
+      hs.slice(0, 30).forEach(function (h) {
+        var b = el("button", "sitem"); b.type = "button"; b.appendChild(el("b", null, h.title)); if (h.sub) b.appendChild(el("span", "note", h.sub));
+        b.addEventListener("click", function () { h.go(q); }); sec.appendChild(b);
+      });
+      if (hs.length > 30) sec.appendChild(el("p", "note", "… và " + (hs.length - 30) + " kết quả khác. Thêm từ khóa để thu hẹp."));
+      box.appendChild(sec);
+    });
+  }
+  $("siteSearch").addEventListener("submit", function (e) { e.preventDefault(); var q = $("siteQ").value.trim(); if (!q) return; location.hash = "#tim-kiem"; runSearch(q); $("siteQ").blur(); });
+  $("searchForm").addEventListener("submit", function (e) { e.preventDefault(); runSearch($("searchQ").value.trim()); });
+
+  /* ================= điểm danh ================= */
+  var CK = { days: [], today: false, count: 0, loaded: false };
+  function vnToday() { return new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10); }
+  function loadCheckin() {
+    if (!LIVE || !LV.prof) { CK.loaded = false; return Promise.resolve(); }
+    return sb.from("checkins").select("day").eq("user_id", LV.prof.id).order("day", { ascending: false }).limit(60).then(function (r) {
+      CK.days = (r.data || []).map(function (x) { return x.day; }); CK.today = CK.days[0] === vnToday(); CK.count = LV.prof.checkin_count || 0; CK.loaded = true;
+    });
+  }
+  function renderCheckin() {
+    ["checkinBox", "checkinBox2"].forEach(function (id) {
+      var host = $(id); if (!host) return; host.innerHTML = "";
+      if (!LIVE || st.role === "teacher") return;
+      var c = el("div", "card ckin"); host.appendChild(c);
+      var head = el("div", "mrow"); head.style.cssText = "justify-content:space-between;align-items:center";
+      var t = el("div"); t.appendChild(el("span", "eyebrow", "Điểm danh mỗi ngày")); t.appendChild(el("h3", null, "Điểm danh đủ 30 ngày, nhận 15 ngày VIP")); t.lastChild.style.fontSize = "18px"; head.appendChild(t);
+      if (!logged()) { head.appendChild(button("sm", "Đăng nhập để điểm danh", function () { showLogin("Đăng nhập để điểm danh"); })); c.appendChild(head); c.appendChild(el("p", "note", "Mỗi ngày bấm điểm danh một lần. Cộng dồn đủ 30 ngày (không cần liên tiếp) được tặng 15 ngày VIP: không quảng cáo, xem bài nâng cao không giới hạn.")); return; }
+      if (!CK.loaded) { c.appendChild(head); c.appendChild(el("p", "note", "Đang tải…")); loadCheckin().then(renderCheckin); return; }
+      if (CK.today) head.appendChild(el("span", "badge ok", "✓ Hôm nay đã điểm danh"));
+      else head.appendChild(button("amber", "Điểm danh hôm nay", doCheckin));
+      c.appendChild(head);
+      var bar = el("div", "ckbar"); var fill = el("i"); fill.style.width = Math.round(CK.count / 30 * 100) + "%"; bar.appendChild(fill); c.appendChild(bar);
+      c.appendChild(el("p", "note", "Đã điểm danh " + CK.count + "/30 ngày" + (CK.count ? ", còn " + (30 - CK.count) + " ngày nữa để nhận 15 ngày VIP." : ". Cộng dồn, không cần liên tiếp.") + (st.role === "vip" && LV.prof.vip_until ? " VIP hiện tại đến " + vnDate(LV.prof.vip_until) + "; phần thưởng sẽ cộng thêm vào." : "")));
+      var dd = el("div", "ckdays"); dd.setAttribute("aria-label", "14 ngày gần nhất");
+      for (var i = 13; i >= 0; i--) { var day = new Date(Date.now() + 7 * 3600e3 - i * 864e5).toISOString().slice(0, 10); var sp = el("span", CK.days.indexOf(day) >= 0 ? "on" : ""); sp.title = day.split("-").reverse().join("/"); dd.appendChild(sp); }
+      c.appendChild(dd);
+    });
+  }
+  function doCheckin() {
+    if (!logged()) { showLogin("Đăng nhập để điểm danh"); return; }
+    sb.rpc("do_checkin").then(function (r) {
+      if (r.error) { sbErr(r.error); return; }
+      var d = r.data || {};
+      CK.today = true; if (CK.days[0] !== vnToday()) CK.days.unshift(vnToday()); CK.count = d.count; LV.prof.checkin_count = d.count;
+      if (d.rewarded) {
+        LV.prof.vip_until = d.vip_until; toast("Chúc mừng! Bạn được tặng 15 ngày VIP, đến " + vnDate(d.vip_until));
+        loadMine(LV.prof.id).then(function () { return Promise.all([loadExercises(), loadNotifs(false)]); }).then(renderAll);
+      } else { toast(d.already ? "Hôm nay bạn đã điểm danh rồi" : "Đã điểm danh: " + d.count + "/30 ngày"); renderCheckin(); }
+    });
+  }
+
   function renderHome() { $("homeQ").textContent = BASIC.length ? BASIC[Math.floor(Date.now() / 864e5) % BASIC.length].t : "Thầy sẽ đăng bài sớm."; }
   function renderRoleSeg() { document.querySelectorAll("#roleSeg button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.r === st.role)); }); }
-  function renderAll() { renderAcct(); renderAds(); renderHome(); renderEx(); renderDocs(); renderShop(); renderTiers(); renderReviews(); renderForum(); renderCourse(); renderAdmin(); renderRoleSeg(); $("navAdmin").hidden = st.role !== "teacher"; }
+  function renderAll() { renderAcct(); renderAds(); renderHome(); renderCheckin(); renderEx(); renderDocs(); renderShop(); renderTiers(); renderReviews(); renderForum(); renderCourse(); renderAdmin(); renderRoleSeg(); $("navAdmin").hidden = st.role !== "teacher"; }
 
   document.querySelectorAll("#roleSeg button").forEach(function (b) {
     b.addEventListener("click", function () { st.role = b.dataset.r; if (st.role !== "guest" && !st.nick) st.nick = "HọcTròHóa"; if (st.role === "student") { st.studentExpired = false; st.access = null; } save(); renderAll(); toast("Đang xem với vai trò: " + ROLES[st.role]); });
@@ -1930,7 +2059,7 @@
     });
   });
 
-  var VIEWS = ["trang-chu", "bai-tap", "khoa-hoc", "hoi-dap", "tai-lieu", "mua-tai-lieu", "dang-ky-hoc", "thanh-vien", "gioi-thieu", "quan-tri", "chinh-sach"];
+  var VIEWS = ["trang-chu", "tim-kiem", "bai-tap", "khoa-hoc", "hoi-dap", "tai-lieu", "mua-tai-lieu", "dang-ky-hoc", "thanh-vien", "gioi-thieu", "quan-tri", "chinh-sach"];
   function route() {
     var h = (location.hash || "").replace("#", ""); if (VIEWS.indexOf(h) < 0) h = "trang-chu";
     VIEWS.forEach(function (v) { $("v-" + v).hidden = v !== h; });

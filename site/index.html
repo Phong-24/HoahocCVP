@@ -43,7 +43,17 @@ button{cursor:pointer}
 :focus-visible{outline:3px solid var(--amber);outline-offset:2px}
 
 .bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
-.bar-top{display:flex;align-items:center;gap:12px;padding-block:10px}
+.bar-top{display:flex;align-items:center;gap:12px;padding-block:10px;flex-wrap:wrap}
+.sitesearch{flex:1;display:flex;justify-content:flex-end;min-width:0}
+.sitesearch input{width:100%;max-width:340px;font:inherit;font-size:14.5px;padding:8px 12px 8px 34px;border:1px solid var(--line);border-radius:999px;background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23708090' stroke-width='2'%3E%3Ccircle cx='7' cy='7' r='5'/%3E%3Cpath d='M11 11l4 4'/%3E%3C/svg%3E") no-repeat 12px center;color:inherit}
+@media (max-width:720px){.sitesearch{order:3;flex-basis:100%}.sitesearch input{max-width:none}}
+.sres{display:grid;gap:8px}.sres h3{font-size:16px;margin:0}
+.sitem{display:grid;gap:2px;text-align:left;width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:inherit;font:inherit;cursor:pointer}
+.sitem:hover{background:var(--tint)}.sitem mark{background:#ffe79a;color:inherit;border-radius:3px;padding:0 1px}
+.ckin{display:grid;gap:10px}.ckbar{height:10px;border-radius:6px;background:var(--tint);overflow:hidden}.ckbar i{display:block;height:100%;background:var(--amber)}
+.ckdays{display:flex;gap:4px;flex-wrap:wrap}.ckdays span{width:14px;height:14px;border-radius:3px;background:var(--tint)}.ckdays span.on{background:var(--amber)}
+.advlock{position:relative;overflow:hidden}.advlock .blur{filter:blur(6px);user-select:none;pointer-events:none;opacity:.7}
+.advlock .over{position:absolute;inset:0;display:grid;place-content:center;gap:10px;text-align:center;padding:16px;background:color-mix(in srgb,var(--surface) 55%,transparent)}
 .logo{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink);margin-right:auto;min-width:0}
 .logo span.name{font-family:var(--display);font-weight:600;font-size:17px;white-space:nowrap}
 .tile{display:inline-grid;grid-template-rows:auto 1fr;width:40px;height:44px;border:2px solid var(--brand);border-radius:6px;background:var(--surface);padding:2px 4px;line-height:1;flex:none}
@@ -289,6 +299,9 @@ footer .wrap{padding-block:20px 90px;display:grid;gap:14px}
         <span class="tile" aria-hidden="true"><small>15</small><b>P</b></span>
         <span class="name">Hóa Học Thầy Phòng</span>
       </a>
+      <form class="sitesearch" id="siteSearch" role="search">
+        <input id="siteQ" type="search" placeholder="Tìm bài tập, tài liệu, câu hỏi…" aria-label="Tìm kiếm trong trang" autocomplete="off">
+      </form>
       <div class="acct" id="acct"></div>
     </div>
     <div class="navscroll">
@@ -327,6 +340,7 @@ footer .wrap{padding-block:20px 90px;display:grid;gap:14px}
         <a class="btn sm" href="#bai-tap" style="justify-self:start">Vào làm</a>
       </div>
     </div>
+    <div id="checkinBox"></div>
     <div class="grid3">
       <a class="card sec" href="#bai-tap"><h3>Bài tập luyện tập</h3><p>Cơ bản làm tự do. Nâng cao xem đáp số ngay, lời giải chi tiết mở bằng một quảng cáo ngắn.</p><span class="go">Vào luyện tập →</span></a>
       <a class="card sec" href="#khoa-hoc"><h3>Khóa học hiện hành</h3><p>Tài liệu và video của khóa đang học. Dành cho Học viên; bạn vào giữa khóa nhập mã kích hoạt thầy gửi.</p><span class="go">Vào khóa học →</span></a>
@@ -412,12 +426,25 @@ footer .wrap{padding-block:20px 90px;display:grid;gap:14px}
     </div>
   </section>
 
+  <section class="view" id="v-tim-kiem" hidden>
+    <div>
+      <h2 class="page">Tìm kiếm</h2>
+      <p class="lead">Tìm trong bài tập, tài liệu, trang web học tập, khóa học và Hỏi đáp. Gõ không dấu cũng được.</p>
+    </div>
+    <form class="mrow" id="searchForm" role="search" style="justify-content:flex-start">
+      <input class="inp" id="searchQ" type="search" placeholder="Ví dụ: peptide, SN2, dị vòng, phổ NMR" aria-label="Từ khóa tìm kiếm" style="max-width:420px">
+      <button class="btn sm" type="submit">Tìm</button>
+    </form>
+    <div id="searchRes" style="display:grid;gap:14px"></div>
+  </section>
+
   <section class="view" id="v-thanh-vien" hidden>
     <div>
       <h2 class="page">Gói thành viên</h2>
       <p class="lead">Ba mức: Miễn phí, VIP 150.000đ/tháng (hoặc 1.500.000đ/năm) và Học viên 8.000.000đ/năm.</p>
     </div>
     <div class="tiers" id="tiers"></div>
+    <div id="checkinBox2"></div>
     <div class="card tablebox">
       <table>
         <thead><tr><th>Quyền lợi</th><th class="c">Miễn phí</th><th class="c">VIP</th><th class="c">Học viên</th></tr></thead>

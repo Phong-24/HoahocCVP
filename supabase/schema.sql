@@ -1052,6 +1052,106 @@ grant execute on function public.admin_accounts() to authenticated;
 
 
 -- ---------------------------------------------------------------------
+-- 11. Giới hạn bài nâng cao cho thành viên (5 bài/ngày) và điểm danh nhận VIP
+-- ---------------------------------------------------------------------
+-- Nội dung bài nâng cao không đọc trực tiếp được nữa; lấy qua list_exercises() / open_adv()
+drop policy if exists "exercises: xem bài đã đăng" on exercises;
+create policy "exercises: xem bài đã đăng" on exercises for select using ((published and level = 'basic') or is_teacher());
+
+create table if not exists public.adv_views (
+  user_id uuid references profiles(id) on delete cascade,
+  ex_id bigint references exercises(id) on delete cascade,
+  day date not null,
+  primary key (user_id, ex_id, day)
+);
+alter table adv_views enable row level security;
+drop policy if exists "adv_views: của mình" on adv_views;
+create policy "adv_views: của mình" on adv_views for select using (user_id = auth.uid() or is_teacher());
+
+create or replace function public.vn_today() returns date
+language sql stable as $$ select (now() at time zone 'Asia/Ho_Chi_Minh')::date $$;
+
+create or replace function public.adv_unlimited(uid uuid default auth.uid()) returns boolean
+language sql stable security definer set search_path = public as $$
+  select uid is not null and role_of(uid) in ('teacher', 'student', 'vip')
+$$;
+
+-- Danh sách bài tập: bài nâng cao chỉ có nội dung với VIP, Học viên, thầy
+create or replace function public.list_exercises() returns table (
+  id bigint, level text, category text, kind text, title text, stem text, options jsonb, images jsonb, ask text, is_new boolean)
+language sql stable security definer set search_path = public as $$
+  select e.id, e.level, e.category, e.kind, e.title,
+    case when e.level = 'basic' or adv_unlimited() then e.stem end,
+    case when e.level = 'basic' or adv_unlimited() then e.options end,
+    case when e.level = 'basic' or adv_unlimited() then e.images end,
+    case when e.level = 'basic' or adv_unlimited() then e.ask end,
+    e.is_new
+  from exercises e where e.published or is_teacher()
+  order by e.id;
+$$;
+grant execute on function public.list_exercises() to anon, authenticated;
+
+-- Mở một bài nâng cao: thành viên tối đa 5 bài khác nhau mỗi ngày (giờ Việt Nam)
+create or replace function public.open_adv(p_ex bigint) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare e exercises; used int; seen boolean;
+begin
+  select * into e from exercises where id = p_ex and level = 'adv' and published;
+  if not found then raise exception 'Không tìm thấy bài'; end if;
+  if auth.uid() is null then return jsonb_build_object('locked', 'login'); end if;
+  if not adv_unlimited() then
+    seen := exists (select 1 from adv_views where user_id = auth.uid() and ex_id = p_ex and day = vn_today());
+    select count(*) into used from adv_views where user_id = auth.uid() and day = vn_today();
+    if not seen then
+      if used >= 5 then return jsonb_build_object('locked', 'limit', 'used', used); end if;
+      insert into adv_views (user_id, ex_id, day) values (auth.uid(), p_ex, vn_today());
+      used := used + 1;
+    end if;
+  end if;
+  return jsonb_build_object('stem', e.stem, 'options', e.options, 'images', e.images, 'ask', e.ask, 'used', coalesce(used, 0));
+end $$;
+grant execute on function public.open_adv(bigint) to anon, authenticated;
+
+-- Điểm danh: mỗi ngày một lần; đủ 30 ngày (cộng dồn) được tặng 15 ngày VIP, rồi đếm lại từ đầu
+create table if not exists public.checkins (
+  user_id uuid references profiles(id) on delete cascade,
+  day date not null,
+  primary key (user_id, day)
+);
+alter table checkins enable row level security;
+drop policy if exists "checkins: của mình" on checkins;
+create policy "checkins: của mình" on checkins for select using (user_id = auth.uid() or is_teacher());
+alter table profiles add column if not exists checkin_count int not null default 0;  -- số ngày đã điểm danh trong lượt hiện tại (0–29)
+alter table profiles add column if not exists checkin_rewards int not null default 0;
+
+create or replace function public.do_checkin() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare p profiles; new_count int; rewarded boolean := false; v timestamptz;
+begin
+  if auth.uid() is null then raise exception 'Cần đăng nhập'; end if;
+  select * into p from profiles where id = auth.uid() for update;
+  if p.is_teacher then raise exception 'Tài khoản quản trị không cần điểm danh'; end if;
+  insert into checkins (user_id, day) values (auth.uid(), vn_today()) on conflict do nothing;
+  if not found then
+    return jsonb_build_object('already', true, 'count', p.checkin_count, 'vip_until', p.vip_until);
+  end if;
+  new_count := p.checkin_count + 1;
+  if new_count >= 30 then
+    v := greatest(coalesce(p.vip_until, now()), now()) + interval '15 days';
+    update profiles set checkin_count = 0, checkin_rewards = checkin_rewards + 1, vip_until = v where id = auth.uid();
+    insert into notifications (user_id, kind, title, body, link)
+    values (auth.uid(), 'renew', 'Bạn được tặng 15 ngày VIP', 'Phần thưởng điểm danh đủ 30 ngày. VIP đến ' || to_char(v at time zone 'Asia/Ho_Chi_Minh', 'DD/MM/YYYY') || '.', 'member');
+    rewarded := true; new_count := 0;
+  else
+    update profiles set checkin_count = new_count where id = auth.uid();
+    v := p.vip_until;
+  end if;
+  return jsonb_build_object('already', false, 'count', new_count, 'rewarded', rewarded, 'vip_until', v);
+end $$;
+revoke execute on function public.do_checkin() from public, anon;
+grant execute on function public.do_checkin() to authenticated;
+
+-- ---------------------------------------------------------------------
 -- 8. Đặt thầy làm quản trị (chạy SAU khi thầy đã đăng nhập trang một lần):
 --    update profiles set is_teacher = true where nick = 'BIET_DANH_CUA_THAY';
 -- ---------------------------------------------------------------------
