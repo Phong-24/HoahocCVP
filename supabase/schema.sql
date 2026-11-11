@@ -747,6 +747,89 @@ revoke execute on function public.doc_status(bigint, uuid) from anon;
 grant execute on function public.doc_status(bigint, uuid) to authenticated;
 
 -- ---------------------------------------------------------------------
+-- 7b. Chat với thầy Phòng (mỗi thành viên một cuộc trò chuyện với thầy)
+-- ---------------------------------------------------------------------
+create table if not exists public.chat_messages (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references profiles(id) on delete cascade,   -- chủ cuộc trò chuyện (thành viên)
+  sender_id uuid not null references profiles(id) on delete cascade, -- người gửi (thành viên hoặc thầy)
+  body text not null check (char_length(body) between 1 and 2000),
+  read_by_teacher boolean not null default false,
+  read_by_user boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create index if not exists chat_messages_user_time on chat_messages (user_id, id);
+alter table chat_messages enable row level security;
+drop policy if exists "chat: xem" on chat_messages;
+create policy "chat: xem" on chat_messages for select using (user_id = auth.uid() or is_teacher());
+drop policy if exists "chat: gửi" on chat_messages;
+create policy "chat: gửi" on chat_messages for insert with check (
+  sender_id = auth.uid() and (
+    (user_id = auth.uid() and not is_teacher() and can_post())
+    or (is_teacher() and user_id <> auth.uid())));
+
+-- Tin của người gửi tự đánh dấu là đã đọc với chính họ
+create or replace function public.chat_before_insert() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if is_teacher() then new.read_by_teacher := true; new.read_by_user := false;
+  else new.read_by_user := true; new.read_by_teacher := false; end if;
+  return new;
+end $$;
+drop trigger if exists chat_before_insert on chat_messages;
+create trigger chat_before_insert before insert on chat_messages for each row execute function chat_before_insert();
+
+-- Thầy trả lời → báo thành viên (gộp mỗi ngày một thông báo)
+create or replace function public.chat_after_insert() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.sender_id <> new.user_id then
+    insert into notifications (user_id, kind, title, body, link, dedupe)
+    values (new.user_id, 'reply', 'Thầy Phòng đã trả lời tin nhắn của bạn', left(new.body, 120), 'chat',
+            'chat:' || new.user_id || ':' || to_char(now() at time zone 'Asia/Ho_Chi_Minh', 'YYYYMMDD'))
+    on conflict (dedupe) do update set body = excluded.body, created_at = now();
+  end if;
+  return new;
+end $$;
+drop trigger if exists chat_after_insert on chat_messages;
+create trigger chat_after_insert after insert on chat_messages for each row execute function chat_after_insert();
+
+create or replace function public.chat_mark_read(p_user uuid default null) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if is_teacher() then
+    update chat_messages set read_by_teacher = true where user_id = p_user and not read_by_teacher;
+  elsif auth.uid() is not null then
+    update chat_messages set read_by_user = true where user_id = auth.uid() and not read_by_user;
+  end if;
+end $$;
+revoke execute on function public.chat_mark_read(uuid) from public, anon;
+grant execute on function public.chat_mark_read(uuid) to authenticated;
+
+-- Thầy: danh sách cuộc trò chuyện
+create or replace function public.chat_threads() returns table (user_id uuid, nick text, email text, last_body text, last_at timestamptz, last_from_teacher boolean, unread int)
+language sql stable security definer set search_path = public as $$
+  select m.user_id, p.nick, u.email::text, l.body, l.created_at, l.sender_id <> l.user_id,
+    (select count(*)::int from chat_messages x where x.user_id = m.user_id and not x.read_by_teacher)
+  from (select distinct user_id from chat_messages) m
+  join profiles p on p.id = m.user_id
+  left join auth.users u on u.id = m.user_id
+  join lateral (select body, created_at, sender_id, user_id from chat_messages y where y.user_id = m.user_id order by id desc limit 1) l on true
+  where is_teacher()
+  order by l.created_at desc;
+$$;
+revoke execute on function public.chat_threads() from public, anon;
+grant execute on function public.chat_threads() to authenticated;
+
+-- Nhận tin nhắn ngay (Supabase Realtime)
+do $$ begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'chat_messages') then
+    execute 'alter publication supabase_realtime add table public.chat_messages';
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------
 -- 8. Thông báo và ảnh trong câu trả lời Hỏi đáp
 -- ---------------------------------------------------------------------
 alter table replies add column if not exists image_key text;
@@ -901,7 +984,8 @@ language sql stable security definer set search_path = public as $$
   select case when is_teacher() then jsonb_build_object(
     'topics', (select count(*) from topics where not approved and not hidden),
     'reviews', (select count(*) from reviews where not approved),
-    'reports', (select count(*) from reports where not resolved)) end;
+    'reports', (select count(*) from reports where not resolved),
+    'chats', (select count(distinct m.user_id) from chat_messages m where not m.read_by_teacher and m.sender_id = m.user_id)) end;
 $$;
 
 -- ---------------------------------------------------------------------

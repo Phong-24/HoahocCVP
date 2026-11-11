@@ -1193,7 +1193,7 @@
     for (var k in base) st[k] = base[k];
     st.exPage = keepPage;
     BASIC.concat(ADV, ESSAY).forEach(function (q) { delete q._k; delete q._s; });
-    NT.items = []; NT.pending = null; CK.loaded = false; CK.days = []; advUsed = 0;
+    NT.items = []; NT.pending = null; CK.loaded = false; CK.days = []; advUsed = 0; chatReset();
     var p = (u ? loadMine(u.id) : Promise.resolve()).then(function () { return Promise.all([loadForum(), loadReviews(), loadShop(), loadExercises(), u ? loadNotifs(true) : null]); });
     return p.then(function () { pageNow = {}; renderAll(); if (u && LV.after) { var f = LV.after; LV.after = null; f(); } });
   }
@@ -1383,7 +1383,7 @@
   /* ---- Thông báo ---- */
   var NT = { items: [], pending: null, timer: null };
   function notifRead() { return LV.prof && LV.prof.notif_read_at ? new Date(LV.prof.notif_read_at).getTime() : 0; }
-  function pendingTotal() { var p = NT.pending; return p ? (p.topics || 0) + (p.reviews || 0) + (p.reports || 0) : 0; }
+  function pendingTotal() { var p = NT.pending; return p ? (p.topics || 0) + (p.reviews || 0) + (p.reports || 0) + (p.chats || 0) : 0; }
   function unreadCount() { var r = notifRead(); return NT.items.filter(function (n) { return new Date(n.created_at).getTime() > r; }).length + pendingTotal(); }
   function loadNotifs(sync) {
     if (!LV.prof) return Promise.resolve();
@@ -1416,7 +1416,7 @@
       var p = NT.pending;
       if (p && pendingTotal()) {
         list.appendChild(el("p", "eyebrow", "Cần thầy xử lý"));
-        [["topics", "câu hỏi chờ duyệt", "admin:topics"], ["reviews", "đánh giá chờ duyệt", "admin:reviews"], ["reports", "báo cáo vi phạm", "admin:reports"]].forEach(function (x) {
+        [["chats", "học sinh nhắn tin chưa đọc", "chat"], ["topics", "câu hỏi chờ duyệt", "admin:topics"], ["reviews", "đánh giá chờ duyệt", "admin:reviews"], ["reports", "báo cáo vi phạm", "admin:reports"]].forEach(function (x) {
           if (p[x[0]]) list.appendChild(nItem({ kind: "admin", title: p[x[0]] + " " + x[1], link: x[2] }, true, "📌"));
         });
       }
@@ -1444,6 +1444,7 @@
     else if (k === "free") { docCat = "Tất cả"; location.hash = "#tai-lieu"; loadDocs().then(function () { renderDocs(); focusEl('[data-doc="f' + v + '"]'); }); }
     else if (k === "topic") { forumOpen = +v; location.hash = "#hoi-dap"; loadForum().then(function () { renderForum(); window.scrollTo(0, 0); }); }
     else if (k === "member") { location.hash = "#thanh-vien"; }
+    else if (k === "chat") { CH.hidden = false; CH.open = true; chatSave(); chatOpen(); }
     else if (k === "admin") { location.hash = "#quan-tri"; renderAdmin(); focusEl("#adm-" + v); }
   }
 
@@ -2032,9 +2033,122 @@
     });
   }
 
+  /* ================= chat với thầy Phòng ================= */
+  var CH = { open: false, hidden: false, msgs: [], unread: 0, thread: null, threads: [], sub: null, timer: null, uid: null };
+  try { CH.hidden = localStorage.getItem("hhtp-chat-hidden") === "1"; } catch (e) {}
+  function chatSave() { try { localStorage.setItem("hhtp-chat-hidden", CH.hidden ? "1" : "0"); } catch (e) {} }
+  function isT() { return st.role === "teacher"; }
+  function chatReset() {
+    if (CH.sub) { try { sb.removeChannel(CH.sub); } catch (e) {} CH.sub = null; }
+    if (CH.timer) { clearInterval(CH.timer); CH.timer = null; }
+    CH.msgs = []; CH.unread = 0; CH.thread = null; CH.threads = []; CH.uid = null;
+  }
+  function chatStart() {
+    if (!LIVE || !LV.prof || CH.uid === LV.prof.id) return;
+    chatReset(); CH.uid = LV.prof.id;
+    try {
+      var opt = { event: "INSERT", schema: "public", table: "chat_messages" }; if (!isT()) opt.filter = "user_id=eq." + CH.uid;
+      CH.sub = sb.channel("chat-" + CH.uid).on("postgres_changes", opt, function (pl) { chatIncoming(pl.new); }).subscribe();
+    } catch (e) {}
+    CH.timer = setInterval(function () { if (!document.hidden) chatRefresh(); }, 30000);
+    chatRefresh();
+  }
+  function chatRefresh() {
+    if (!LV.prof) return Promise.resolve();
+    if (isT()) return sb.rpc("chat_threads").then(function (r) { CH.threads = r.data || []; CH.unread = CH.threads.reduce(function (a, t) { return a + (t.unread || 0); }, 0); if (CH.open && CH.thread) return chatLoad(); }).then(renderChat);
+    return sb.from("chat_messages").select("id", { count: "exact", head: true }).eq("user_id", LV.prof.id).eq("read_by_user", false).then(function (r) { CH.unread = r.count || 0; if (CH.open) return chatLoad(); }).then(renderChat);
+  }
+  function chatLoad() {
+    var who = isT() ? CH.thread && CH.thread.user_id : LV.prof.id; if (!who) return Promise.resolve();
+    return sb.from("chat_messages").select("id,user_id,sender_id,body,created_at").eq("user_id", who).order("id", { ascending: false }).limit(200).then(function (r) {
+      CH.msgs = (r.data || []).reverse();
+      return sb.rpc("chat_mark_read", isT() ? { p_user: who } : {}).then(function () {
+        if (isT()) { CH.threads.forEach(function (t) { if (t.user_id === who) t.unread = 0; }); CH.unread = CH.threads.reduce(function (a, t) { return a + (t.unread || 0); }, 0); refreshPending(); }
+        else CH.unread = 0;
+      });
+    });
+  }
+  function chatIncoming(m) {
+    if (!m) return;
+    var mine = m.sender_id === (LV.prof && LV.prof.id);
+    var inView = CH.open && (isT() ? CH.thread && CH.thread.user_id === m.user_id : true);
+    if (inView) { if (!CH.msgs.some(function (x) { return x.id === m.id; })) CH.msgs.push(m); if (!mine) sb.rpc("chat_mark_read", isT() ? { p_user: m.user_id } : {}); renderChat(); }
+    else if (!mine) { if (isT()) chatRefresh(); else { CH.unread++; renderChat(); toast("Thầy Phòng vừa trả lời tin nhắn của bạn"); } }
+  }
+  function chatOpen() { CH.open = true; renderChat(); if (LIVE && LV.prof) (isT() ? chatRefresh() : chatLoad().then(renderChat)); }
+  function chatSend(ta) {
+    var v = ta.value.trim(); if (!v) return;
+    if (!isT() && banned()) return;
+    if (v.length > 2000) { toast("Tin nhắn tối đa 2000 ký tự"); return; }
+    var who = isT() ? CH.thread.user_id : LV.prof.id;
+    ta.disabled = true;
+    sb.from("chat_messages").insert({ user_id: who, sender_id: LV.prof.id, body: v }).select("id,user_id,sender_id,body,created_at").single().then(function (r) {
+      ta.disabled = false;
+      if (r.error) { sbErr(r.error, "Chưa gửi được"); return; }
+      var m = Object.assign({ user_id: who, sender_id: LV.prof.id, body: v, created_at: new Date().toISOString() }, r.data || {});
+      ta.value = ""; if (!CH.msgs.some(function (x) { return x.id === m.id; })) CH.msgs.push(m); renderChat(); var t2 = document.querySelector(".chatf textarea"); if (t2) t2.focus();
+    });
+  }
+  function renderChat() {
+    var host = $("chatW"); if (!host) return;
+    host.innerHTML = ""; document.body.classList.toggle("has-chat", !!LIVE);
+    if (!LIVE) return;
+    if (logged() && LV.prof) chatStart();
+    if (CH.hidden) {
+      var tab = el("button", "chattab", "💬"); tab.type = "button"; tab.title = "Hiện khung chat với thầy Phòng"; tab.setAttribute("aria-label", "Hiện khung chat với thầy Phòng" + (CH.unread ? ", " + CH.unread + " tin mới" : ""));
+      tab.addEventListener("click", function () { CH.hidden = false; chatSave(); renderChat(); }); host.appendChild(tab);
+      document.body.classList.remove("has-chat"); return;
+    }
+    if (!CH.open) {
+      var b = el("button", "chatb"); b.type = "button"; b.appendChild(el("span", null, "💬 " + (isT() ? "Tin nhắn học sinh" : "Chat với thầy Phòng")));
+      if (CH.unread) b.appendChild(el("span", "dot", String(CH.unread)));
+      b.addEventListener("click", chatOpen); host.appendChild(b); return;
+    }
+    var p = el("section", "chatp"); p.setAttribute("aria-label", "Chat với thầy Phòng");
+    var h = el("div", "chath");
+    if (isT() && CH.thread) { var bk = el("button", null, "‹"); bk.type = "button"; bk.title = "Danh sách"; bk.setAttribute("aria-label", "Quay lại danh sách"); bk.addEventListener("click", function () { CH.thread = null; CH.msgs = []; chatRefresh(); }); h.appendChild(bk); }
+    h.appendChild(el("b", null, isT() ? (CH.thread ? CH.thread.nick : "Tin nhắn học sinh") : "Chat với thầy Phòng"));
+    var mn = el("button", null, "–"); mn.type = "button"; mn.title = "Thu nhỏ"; mn.setAttribute("aria-label", "Thu nhỏ khung chat"); mn.addEventListener("click", function () { CH.open = false; renderChat(); }); h.appendChild(mn);
+    var hd = el("button", null, "×"); hd.type = "button"; hd.title = "Ẩn khung chat"; hd.setAttribute("aria-label", "Ẩn khung chat"); hd.addEventListener("click", function () { CH.open = false; CH.hidden = true; chatSave(); renderChat(); toast("Đã ẩn khung chat. Bấm biểu tượng 💬 ở mép phải màn hình để hiện lại."); }); h.appendChild(hd);
+    p.appendChild(h);
+    if (!logged()) {
+      var g = el("div", "chatt"); g.appendChild(el("p", null, "Đăng nhập để nhắn tin trực tiếp với thầy Phòng: hỏi bài, hỏi về khóa học, tài liệu…"));
+      g.appendChild(button("sm", "Đăng nhập", function () { showLogin("Đăng nhập để chat với thầy"); })); p.appendChild(g); host.appendChild(p); return;
+    }
+    if (isT() && !CH.thread) {
+      var tl = el("div", "chatt");
+      if (!CH.threads.length) tl.appendChild(el("p", "note", "Chưa có học sinh nào nhắn tin."));
+      CH.threads.forEach(function (t) {
+        var it = el("button", t.unread ? "unread" : ""); it.type = "button";
+        var top = el("span"); top.appendChild(el("b", null, t.nick)); if (t.unread) { top.appendChild(document.createTextNode(" ")); top.appendChild(el("span", "badge st", t.unread + " mới")); } it.appendChild(top);
+        it.appendChild(el("span", "note", (t.last_from_teacher ? "Thầy: " : "") + (t.last_body || "").slice(0, 70)));
+        it.appendChild(el("span", "note", (t.email || "") + " · " + rel(new Date(t.last_at).getTime())));
+        it.addEventListener("click", function () { CH.thread = t; CH.msgs = []; renderChat(); chatLoad().then(renderChat); });
+        tl.appendChild(it);
+      });
+      p.appendChild(tl); host.appendChild(p); return;
+    }
+    var box = el("div", "chatm"); box.setAttribute("aria-live", "polite");
+    if (!CH.msgs.length) box.appendChild(el("p", "note", isT() ? "Chưa có tin nhắn." : "Chào bạn! Hãy để lại câu hỏi, thầy Phòng sẽ trả lời khi online. Bạn sẽ nhận thông báo ở biểu tượng 🔔 khi thầy trả lời."));
+    CH.msgs.forEach(function (m) {
+      var me = m.sender_id === LV.prof.id;
+      var d = el("div", "msg" + (me ? " me" : "")); d.appendChild(document.createTextNode(m.body));
+      d.appendChild(el("time", null, (!me && !isT() ? "Thầy Phòng · " : "") + new Date(m.created_at).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })));
+      box.appendChild(d);
+    });
+    p.appendChild(box);
+    var f = el("form", "chatf"); var ta = el("textarea"); ta.rows = 1; ta.placeholder = "Nhập tin nhắn…"; ta.title = "Enter để gửi, Shift+Enter để xuống dòng"; ta.setAttribute("aria-label", "Nội dung tin nhắn"); ta.maxLength = 2000;
+    ta.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); chatSend(ta); } });
+    var sbt = el("button", "btn sm", "Gửi"); sbt.type = "submit";
+    f.addEventListener("submit", function (e) { e.preventDefault(); chatSend(ta); });
+    f.appendChild(ta); f.appendChild(sbt); p.appendChild(f);
+    host.appendChild(p);
+    setTimeout(function () { box.scrollTop = box.scrollHeight; }, 0);
+  }
+
   function renderHome() { $("homeQ").textContent = BASIC.length ? BASIC[Math.floor(Date.now() / 864e5) % BASIC.length].t : "Thầy sẽ đăng bài sớm."; }
   function renderRoleSeg() { document.querySelectorAll("#roleSeg button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.r === st.role)); }); }
-  function renderAll() { renderAcct(); renderAds(); renderHome(); renderCheckin(); renderEx(); renderDocs(); renderShop(); renderTiers(); renderReviews(); renderForum(); renderCourse(); renderAdmin(); renderRoleSeg(); $("navAdmin").hidden = st.role !== "teacher"; }
+  function renderAll() { renderAcct(); renderAds(); renderHome(); renderCheckin(); renderChat(); renderEx(); renderDocs(); renderShop(); renderTiers(); renderReviews(); renderForum(); renderCourse(); renderAdmin(); renderRoleSeg(); $("navAdmin").hidden = st.role !== "teacher"; }
 
   document.querySelectorAll("#roleSeg button").forEach(function (b) {
     b.addEventListener("click", function () { st.role = b.dataset.r; if (st.role !== "guest" && !st.nick) st.nick = "HọcTròHóa"; if (st.role === "student") { st.studentExpired = false; st.access = null; } save(); renderAll(); toast("Đang xem với vai trò: " + ROLES[st.role]); });
