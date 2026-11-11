@@ -1196,7 +1196,7 @@ begin
 end $$;
 grant execute on function public.open_adv(bigint) to anon, authenticated;
 
--- Điểm danh: mỗi ngày một lần; đủ 30 ngày (cộng dồn) được tặng 15 ngày VIP, rồi đếm lại từ đầu
+-- Điểm danh: mỗi ngày một lần; đủ 30 ngày (cộng dồn) được tặng 5 ngày trải nghiệm VIP, rồi đếm lại từ đầu
 create table if not exists public.checkins (
   user_id uuid references profiles(id) on delete cascade,
   day date not null,
@@ -1221,10 +1221,10 @@ begin
   end if;
   new_count := p.checkin_count + 1;
   if new_count >= 30 then
-    v := greatest(coalesce(p.vip_until, now()), now()) + interval '15 days';
+    v := greatest(coalesce(p.vip_until, now()), now()) + interval '5 days';
     update profiles set checkin_count = 0, checkin_rewards = checkin_rewards + 1, vip_until = v where id = auth.uid();
     insert into notifications (user_id, kind, title, body, link)
-    values (auth.uid(), 'renew', 'Bạn được tặng 15 ngày VIP', 'Phần thưởng điểm danh đủ 30 ngày. VIP đến ' || to_char(v at time zone 'Asia/Ho_Chi_Minh', 'DD/MM/YYYY') || '.', 'member');
+    values (auth.uid(), 'renew', 'Bạn được tặng 5 ngày trải nghiệm VIP', 'Phần thưởng điểm danh đủ 30 ngày. VIP đến ' || to_char(v at time zone 'Asia/Ho_Chi_Minh', 'DD/MM/YYYY') || '.', 'member');
     rewarded := true; new_count := 0;
   else
     update profiles set checkin_count = new_count where id = auth.uid();

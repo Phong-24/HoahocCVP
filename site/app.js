@@ -301,7 +301,7 @@
       ov.appendChild(button("sm", "Đăng nhập", function () { showLogin("Đăng nhập để xem bài nâng cao"); }));
     } else if (why === "limit") {
       ov.appendChild(el("b", null, "Hôm nay bạn đã xem đủ " + ADV_LIMIT + " bài nâng cao"));
-      ov.appendChild(el("p", "note", "Thành viên miễn phí xem tối đa " + ADV_LIMIT + " bài nâng cao mỗi ngày. Quay lại vào ngày mai, hoặc nâng cấp VIP để xem không giới hạn. Điểm danh đủ 30 ngày được tặng 15 ngày VIP."));
+      ov.appendChild(el("p", "note", "Thành viên miễn phí xem tối đa " + ADV_LIMIT + " bài nâng cao mỗi ngày. Quay lại vào ngày mai, hoặc nâng cấp VIP để xem không giới hạn. Điểm danh đủ 30 ngày được tặng 5 ngày trải nghiệm VIP."));
       var r = el("div", "cact"); r.style.justifyContent = "center";
       r.appendChild(button("amber sm", "Nâng cấp VIP", function () { location.hash = "#thanh-vien"; }));
       r.appendChild(button("ghost sm", "Điểm danh", function () { location.hash = "#trang-chu"; focusEl("#checkinBox .card"); }));
@@ -2007,14 +2007,14 @@
       if (!LIVE || st.role === "teacher") return;
       var c = el("div", "card ckin"); host.appendChild(c);
       var head = el("div", "mrow"); head.style.cssText = "justify-content:space-between;align-items:center";
-      var t = el("div"); t.appendChild(el("span", "eyebrow", "Điểm danh mỗi ngày")); t.appendChild(el("h3", null, "Điểm danh đủ 30 ngày, nhận 15 ngày VIP")); t.lastChild.style.fontSize = "18px"; head.appendChild(t);
-      if (!logged()) { head.appendChild(button("sm", "Đăng nhập để điểm danh", function () { showLogin("Đăng nhập để điểm danh"); })); c.appendChild(head); c.appendChild(el("p", "note", "Mỗi ngày bấm điểm danh một lần. Cộng dồn đủ 30 ngày (không cần liên tiếp) được tặng 15 ngày VIP: không quảng cáo, xem bài nâng cao không giới hạn.")); return; }
+      var t = el("div"); t.appendChild(el("span", "eyebrow", "Điểm danh mỗi ngày")); t.appendChild(el("h3", null, "Điểm danh đủ 30 ngày, nhận 5 ngày trải nghiệm VIP")); t.lastChild.style.fontSize = "18px"; head.appendChild(t);
+      if (!logged()) { head.appendChild(button("sm", "Đăng nhập để điểm danh", function () { showLogin("Đăng nhập để điểm danh"); })); c.appendChild(head); c.appendChild(el("p", "note", "Mỗi ngày bấm điểm danh một lần. Cộng dồn đủ 30 ngày (không cần liên tiếp) được tặng 5 ngày trải nghiệm VIP: không quảng cáo, xem bài nâng cao không giới hạn.")); return; }
       if (!CK.loaded) { c.appendChild(head); c.appendChild(el("p", "note", "Đang tải…")); loadCheckin().then(renderCheckin); return; }
       if (CK.today) head.appendChild(el("span", "badge ok", "✓ Hôm nay đã điểm danh"));
       else head.appendChild(button("amber", "Điểm danh hôm nay", doCheckin));
       c.appendChild(head);
       var bar = el("div", "ckbar"); var fill = el("i"); fill.style.width = Math.round(CK.count / 30 * 100) + "%"; bar.appendChild(fill); c.appendChild(bar);
-      c.appendChild(el("p", "note", "Đã điểm danh " + CK.count + "/30 ngày" + (CK.count ? ", còn " + (30 - CK.count) + " ngày nữa để nhận 15 ngày VIP." : ". Cộng dồn, không cần liên tiếp.") + (st.role === "vip" && LV.prof.vip_until ? " VIP hiện tại đến " + vnDate(LV.prof.vip_until) + "; phần thưởng sẽ cộng thêm vào." : "")));
+      c.appendChild(el("p", "note", "Đã điểm danh " + CK.count + "/30 ngày" + (CK.count ? ", còn " + (30 - CK.count) + " ngày nữa để nhận 5 ngày trải nghiệm VIP." : ". Cộng dồn, không cần liên tiếp.") + (st.role === "vip" && LV.prof.vip_until ? " VIP hiện tại đến " + vnDate(LV.prof.vip_until) + "; phần thưởng sẽ cộng thêm vào." : "")));
       var dd = el("div", "ckdays"); dd.setAttribute("aria-label", "14 ngày gần nhất");
       for (var i = 13; i >= 0; i--) { var day = new Date(Date.now() + 7 * 3600e3 - i * 864e5).toISOString().slice(0, 10); var sp = el("span", CK.days.indexOf(day) >= 0 ? "on" : ""); sp.title = day.split("-").reverse().join("/"); dd.appendChild(sp); }
       c.appendChild(dd);
@@ -2027,7 +2027,7 @@
       var d = r.data || {};
       CK.today = true; if (CK.days[0] !== vnToday()) CK.days.unshift(vnToday()); CK.count = d.count; LV.prof.checkin_count = d.count;
       if (d.rewarded) {
-        LV.prof.vip_until = d.vip_until; toast("Chúc mừng! Bạn được tặng 15 ngày VIP, đến " + vnDate(d.vip_until));
+        LV.prof.vip_until = d.vip_until; toast("Chúc mừng! Bạn được tặng 5 ngày trải nghiệm VIP, đến " + vnDate(d.vip_until));
         loadMine(LV.prof.id).then(function () { return Promise.all([loadExercises(), loadNotifs(false)]); }).then(renderAll);
       } else { toast(d.already ? "Hôm nay bạn đã điểm danh rồi" : "Đã điểm danh: " + d.count + "/30 ngày"); renderCheckin(); }
     });
