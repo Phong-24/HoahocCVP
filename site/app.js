@@ -269,8 +269,8 @@
     if (!searching && cur === pages.length - 1) list.appendChild(el("p", "note", "Bài mới thầy đăng sẽ được thêm vào các trang sau, không chèn vào giữa bài cũ."));
   }
 
-  /* Bài nâng cao: thành viên xem tối đa 5 bài/ngày; bài thứ 6 bị làm mờ */
-  var ADV_LIMIT = 5, advUsed = 0, advBusy = false;
+  /* Bài nâng cao: thành viên xem tối đa 3 bài/ngày; bài thứ 4 trở đi bị làm mờ */
+  var ADV_LIMIT = 3, advUsed = 0, advBusy = false;
   function openAdvSeq(list) {
     if (advBusy) return; advBusy = true;
     list.reduce(function (p, q) {
@@ -310,10 +310,12 @@
     c.appendChild(ov);
     return c;
   }
+  /* Không còn quảng cáo: lời giải và tài liệu "cần đăng nhập" mở bằng tài khoản miễn phí */
+  function canSol() { return logged(); }
   function qCard(q, i, adv) {
     var c = el("article", "card q");
     var top = el("div", "q-top"); var lab = el("span", "lvl" + (adv ? " adv" : ""), (adv ? "Nâng cao" : "Cơ bản") + " · Câu " + (i + 1)); if (q.isNew) { var nw = el("span", "badge ok", "Mới"); nw.style.marginLeft = "6px"; lab.appendChild(nw); } top.appendChild(lab);
-    top.appendChild(el("span", "note", q.g + (adv ? " · lời giải chi tiết mở bằng quảng cáo" : "")));
+    top.appendChild(el("span", "note", q.g + (adv && !logged() ? " · đăng nhập để xem lời giải" : "")));
     c.appendChild(top); c.appendChild(el("p", "q-text", q.t));
     var opts = el("div", "opts"), picked = st.ans[q.id];
     q.o.forEach(function (txt, j) {
@@ -328,14 +330,14 @@
       var ok = picked === q.a;
       c.appendChild(el("div", "result " + (ok ? "ok" : "no"), (ok ? "Chính xác. " : "Chưa đúng. ") + (adv ? "Đáp số: " + q.ans + "." : q.e)));
       if (adv) {
-        if ((st.sol[q.id] || noAds()) && LIVE && !q.s) { fetchSolution(q, false); c.appendChild(el("p", "note", "Đang tải lời giải…")); }
-        else if (st.sol[q.id] || noAds()) {
+        if (canSol() && LIVE && !q.s) { fetchSolution(q, false); c.appendChild(el("p", "note", "Đang tải lời giải…")); }
+        else if (canSol()) {
           var s = el("div", "solution"); s.appendChild(el("b", null, "Lời giải chi tiết"));
           var ol = el("ol"); ol.style.cssText = "margin:6px 0 0;padding-left:20px;display:grid;gap:4px"; q.s.forEach(function (x) { ol.appendChild(el("li", null, x)); }); s.appendChild(ol); c.appendChild(s);
         } else {
           var r = el("div", "mrow"); r.style.justifyContent = "flex-start";
-          r.appendChild(button("amber sm", "Xem lời giải chi tiết (1 quảng cáo)", function () { showAd("Lời giải: Nâng cao · Câu " + (i + 1), function () { st.sol[q.id] = true; save(); if (LIVE) { q._s = false; fetchSolution(q, true); } else renderEx(); toast("Đã mở lời giải"); }); }));
-          var up = el("a", "btn sm ghost", "VIP: xem không cần quảng cáo"); up.href = "#thanh-vien"; r.appendChild(up);
+          r.appendChild(button("amber sm", "Đăng nhập để xem lời giải chi tiết", function () { showLogin("Đăng nhập (miễn phí) để xem lời giải"); }));
+          r.appendChild(el("span", "note", "Tài khoản miễn phí, tạo trong 1 phút."));
           c.appendChild(r);
         }
       }
@@ -357,15 +359,15 @@
     c.appendChild(el("p", null, q.text));
     c.appendChild(schemes(q.de, "Sơ đồ tổng hợp " + q.name));
     var ask = el("p", "ask"); ask.appendChild(el("b", null, "Yêu cầu: ")); ask.appendChild(document.createTextNode(q.ask || "xác định công thức cấu tạo các chất được đánh số trong sơ đồ.")); c.appendChild(ask);
-    var shown = st.sol[q.id] || noAds();
+    var shown = canSol();
     if (shown && LIVE && !q.da) { fetchSolution(q, false); c.appendChild(el("p", "note", "Đang tải đáp án…")); }
     else if (shown) {
       var s = el("div", "solution"); s.style.display = "grid"; s.style.gap = "8px"; s.appendChild(el("b", null, "Đáp án"));
       s.appendChild(schemes(q.da, "Đáp án bài " + q.name)); c.appendChild(s);
     } else {
       var r = el("div", "mrow"); r.style.justifyContent = "flex-start";
-      r.appendChild(button("amber sm", "Xem đáp án (1 quảng cáo)", function () { showAd("Đáp án: Tổng hợp " + q.name, function () { st.sol[q.id] = true; save(); if (LIVE) { q._s = false; fetchSolution(q, true); } else renderEx(); toast("Đã mở đáp án"); }); }));
-      var up = el("a", "btn sm ghost", "VIP: xem không cần quảng cáo"); up.href = "#thanh-vien"; r.appendChild(up);
+      r.appendChild(button("amber sm", "Đăng nhập để xem đáp án", function () { showLogin("Đăng nhập (miễn phí) để xem đáp án"); }));
+      r.appendChild(el("span", "note", "Tài khoản miễn phí, tạo trong 1 phút."));
       c.appendChild(r);
     }
     if (logged()) {
@@ -688,13 +690,11 @@
       b.addEventListener("click", function () { set(c); }); box.appendChild(b);
     });
   }
-  /* Trang web học tập hữu ích: link chỉ hiện sau quảng cáo (VIP, Học viên mở thẳng) */
+  /* Trang web học tập hữu ích: link hiện khi đã đăng nhập (tài khoản miễn phí) */
   function linkCard(d) {
-    var open = st.opened[d.id] || noAds(), btn, lk, cls;
-    if (noAds()) { lk = "Mở thẳng (" + ROLES[st.role] + ")"; cls = "vip"; }
-    else { lk = st.opened[d.id] ? "Đã mở" : "Mở bằng 1 quảng cáo"; cls = "ad"; }
+    var open = logged(), btn, lk = open ? "Đã đăng nhập" : "Cần đăng nhập", cls = open ? "free" : "ad";
     if (open) btn = button("sm", "Xem link", function () { showLink(d); });
-    else btn = button("amber sm", "Xem quảng cáo để lấy link", function () { showAd(d.title, function () { st.opened[d.id] = true; save(); renderDocs(); showLink(d); }); });
+    else btn = button("amber sm", "Đăng nhập để lấy link", function () { showLogin("Đăng nhập (miễn phí) để xem link"); });
     return docCard(d, lk, cls, d.desc || "Trang web học tập", btn);
   }
   function showLink(d) {
@@ -716,13 +716,12 @@
     var box = $("docsFree"); box.innerHTML = "";
     DOCS.filter(function (d) { return docCat === "Tất cả" || d.cat === docCat; }).forEach(function (d) {
       if (d.kind === "link") { box.appendChild(linkCard(d)); return; }
-      var open = d.acc === "open" || st.opened[d.id] || noAds(), btn, lk, cls;
+      var open = d.acc === "open" || logged(), btn, lk, cls;
       if (d.acc === "open") { lk = "Đọc tự do"; cls = "free"; }
-      else if (noAds()) { lk = "Mở thẳng (" + ROLES[st.role] + ")"; cls = "vip"; }
-      else { lk = st.opened[d.id] ? "Đã mở" : "Mở bằng 1 quảng cáo"; cls = "ad"; }
+      else { lk = logged() ? "Đã đăng nhập" : "Cần đăng nhập"; cls = logged() ? "free" : "ad"; }
       if (open) btn = button("sm", "Mở tài liệu", function () { openFile(d, "view"); });
-      else btn = button("amber sm", "Xem quảng cáo để mở", function () { showAd(d.title, function () { st.opened[d.id] = true; save(); renderDocs(); toast("Đã mở: " + d.title); }); });
-      box.appendChild(docCard(d, lk, cls, d.pages + " trang · PDF", btn));
+      else btn = button("amber sm", "Đăng nhập để mở", function () { showLogin("Đăng nhập (miễn phí) để mở tài liệu"); });
+      box.appendChild(docCard(d, lk, cls, (d.pages ? d.pages + " trang · " : "") + "PDF", btn));
     });
   }
 
@@ -787,9 +786,9 @@
   function renderTiers() {
     var box = $("tiers"); box.innerHTML = "";
     var T = [
-      { k: "member", name: "Miễn phí", cost: "0đ", per: "", items: ["Bài tập cơ bản, đáp số bài nâng cao", "Bình luận, hỏi đáp, đánh giá", "Lời giải, tài liệu: xem 1 quảng cáo"] },
-      { k: "vip", name: "VIP", cost: "150.000đ", per: "/tháng · hoặc 1.500.000đ/năm", items: ["Không quảng cáo", "Mọi lời giải chi tiết", "Tài liệu miễn phí và tài liệu xem quảng cáo: mở thẳng, không cần xem quảng cáo", "Giảm 15% khi mua tài liệu trả phí", "Khóa học hiện hành: cần gói Học viên", "Mua theo năm tiết kiệm 300.000đ so với 12 tháng lẻ"], mark: true },
-      { k: "student", name: "Học viên", cost: st.studentExpired ? "4.000.000đ" : "8.000.000đ", per: st.studentExpired ? "/năm · giá gia hạn (giảm 50%)" : "/năm", items: ["Học miễn phí khóa Hữu cơ của năm đăng ký; truy cập miễn phí tài liệu, video ở Khóa học hiện hành", "Không quảng cáo, mọi lời giải chi tiết", "Tài liệu miễn phí và tài liệu xem quảng cáo: mở thẳng, không cần xem quảng cáo", "Mở khóa miễn phí mục Bài giảng lý thuyết và bài tập ứng dụng, Bài tập theo chương", "Giảm 50% khi mua tài liệu ở các mục còn lại", "Hết hạn: tài khoản trở về Thành viên thường; gia hạn được giảm 50% (4.000.000đ/năm)"] }
+      { k: "member", name: "Miễn phí", cost: "0đ", per: "", items: ["Bài tập cơ bản: làm và xem đáp án tự do", "Đăng nhập: xem mọi lời giải chi tiết, tài liệu miễn phí, trang web học tập", "Bài nâng cao: tối đa " + ADV_LIMIT + " bài mỗi ngày", "Bình luận, hỏi đáp, chat với thầy, điểm danh nhận VIP"] },
+      { k: "vip", name: "VIP", cost: "150.000đ", per: "/tháng · hoặc 1.500.000đ/năm", items: ["Bài nâng cao không giới hạn", "Mọi lời giải chi tiết, tài liệu miễn phí", "Giảm 15% khi mua tài liệu trả phí", "Khóa học hiện hành: cần gói Học viên", "Mua theo năm tiết kiệm 300.000đ so với 12 tháng lẻ"], mark: true },
+      { k: "student", name: "Học viên", cost: st.studentExpired ? "4.000.000đ" : "8.000.000đ", per: st.studentExpired ? "/năm · giá gia hạn (giảm 50%)" : "/năm", items: ["Học miễn phí khóa Hữu cơ của năm đăng ký; truy cập miễn phí tài liệu, video ở Khóa học hiện hành", "Bài nâng cao không giới hạn, mọi lời giải chi tiết", "Mở khóa miễn phí mục Bài giảng lý thuyết và bài tập ứng dụng, Bài tập theo chương", "Giảm 50% khi mua tài liệu ở các mục còn lại", "Hết hạn: tài khoản trở về Thành viên thường; gia hạn được giảm 50% (4.000.000đ/năm)"] }
     ];
     T.forEach(function (t) {
       var c = el("div", "tier" + (t.mark ? " mark" : ""));
@@ -1823,11 +1822,11 @@
           d1.appendChild(c);
         });
         /* Tài liệu miễn phí */
-        var d2 = el("details", "adm"); d2.appendChild(el("summary", null, "Tài liệu miễn phí / xem quảng cáo (" + (R[2].data || []).length + ")")); body.appendChild(d2);
+        var d2 = el("details", "adm"); d2.appendChild(el("summary", null, "Tài liệu miễn phí / cần đăng nhập (" + (R[2].data || []).length + ")")); body.appendChild(d2);
         d2.appendChild(miniForm([
           { k: "category", label: "Mục", options: DOC_CATS.slice(1) }, { k: "title", label: "Tên tài liệu", ph: "Tên tài liệu" },
           { k: "tag", label: "Nhãn nhỏ", ph: "Nhãn", w: "200px" }, { k: "pages", label: "Số trang", ph: "Số trang", type: "number", w: "110px" },
-          { k: "access", label: "Cách mở", options: [["open", "Đọc tự do"], ["ad", "Xem quảng cáo"]], w: "170px" }
+          { k: "access", label: "Cách mở", options: [["open", "Đọc tự do"], ["ad", "Cần đăng nhập"]], w: "170px" }
         ], "Thêm tài liệu", function (o) {
           if (!o.title) { toast("Cần tên tài liệu"); return; }
           sb.from("free_docs").insert({ category: o.category, title: o.title, tag: o.tag || null, pages: +o.pages || null, access: o.access }).then(function (r) { if (r.error) { sbErr(r.error); return; } toast("Đã thêm tài liệu"); reload(); loadDocs().then(renderDocs); });
@@ -1840,7 +1839,7 @@
         });
         /* Trang web học tập hữu ích */
         var d4 = el("details", "adm"); d4.appendChild(el("summary", null, "Trang web học tập hữu ích (" + (R[5].data || []).length + ")")); body.appendChild(d4);
-        d4.appendChild(el("p", "note", "Học sinh phải xem quảng cáo mới thấy link (VIP, Học viên mở thẳng). Link phải bắt đầu bằng http:// hoặc https://"));
+        d4.appendChild(el("p", "note", "Học sinh cần đăng nhập (tài khoản miễn phí) mới thấy link. Link phải bắt đầu bằng http:// hoặc https://"));
         var urls = {}; (R[6].data || []).forEach(function (u) { urls[u.link_id] = u.url; });
         var reloadLinks = function () { reload(); loadDocs().then(renderDocs); };
         d4.appendChild(miniForm([{ k: "title", label: "Tên trang web", ph: "Tên trang web, ví dụ PubChem" }, { k: "url", label: "Link", ph: "https://…", type: "url", w: "300px" }, { k: "desc", label: "Mô tả ngắn", ph: "Mô tả ngắn (không bắt buộc)", w: "280px" }], "Thêm trang web", function (o) {
@@ -1953,7 +1952,7 @@
     if (LIVE) { c.type = "button"; c.style.border = "none"; c.style.cursor = "pointer"; c.addEventListener("click", accountMenu); }
     a.appendChild(c);
   }
-  function renderAds() { document.querySelectorAll(".ad").forEach(function (x) { x.hidden = noAds(); }); }
+  function renderAds() { document.querySelectorAll(".ad").forEach(function (x) { x.hidden = true; }); }
   /* ================= tìm kiếm toàn trang ================= */
   function searchIndex() {
     var out = [];

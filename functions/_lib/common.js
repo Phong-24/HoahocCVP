@@ -51,8 +51,11 @@ export async function canAccess(env, token, type, id) {
   id = Number(id);
   if (!id) return false;
   if (type === "free_doc") {
-    const d = await one(await asUser(env, token, `/rest/v1/free_docs?id=eq.${id}&select=id`));
-    return !!d;
+    const d = await one(await asUser(env, token, `/rest/v1/free_docs?id=eq.${id}&select=id,access`));
+    if (!d) return false;
+    // Tài liệu "cần đăng nhập" (giá trị cũ 'ad'): phải có tài khoản
+    if (d.access !== "open" && !(await getUser(env, token))) return false;
+    return true;
   }
   if (!token) return false;
   if (type === "shop_doc") {

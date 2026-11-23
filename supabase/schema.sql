@@ -1136,7 +1136,7 @@ grant execute on function public.admin_accounts() to authenticated;
 
 
 -- ---------------------------------------------------------------------
--- 11. Giới hạn bài nâng cao cho thành viên (5 bài/ngày) và điểm danh nhận VIP
+-- 11. Giới hạn bài nâng cao cho thành viên (3 bài/ngày) và điểm danh nhận VIP
 -- ---------------------------------------------------------------------
 -- Nội dung bài nâng cao không đọc trực tiếp được nữa; lấy qua list_exercises() / open_adv()
 drop policy if exists "exercises: xem bài đã đăng" on exercises;
@@ -1175,7 +1175,7 @@ language sql stable security definer set search_path = public as $$
 $$;
 grant execute on function public.list_exercises() to anon, authenticated;
 
--- Mở một bài nâng cao: thành viên tối đa 5 bài khác nhau mỗi ngày (giờ Việt Nam)
+-- Mở một bài nâng cao: thành viên tối đa 3 bài khác nhau mỗi ngày (giờ Việt Nam)
 create or replace function public.open_adv(p_ex bigint) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare e exercises; used int; seen boolean;
@@ -1187,7 +1187,7 @@ begin
     seen := exists (select 1 from adv_views where user_id = auth.uid() and ex_id = p_ex and day = vn_today());
     select count(*) into used from adv_views where user_id = auth.uid() and day = vn_today();
     if not seen then
-      if used >= 5 then return jsonb_build_object('locked', 'limit', 'used', used); end if;
+      if used >= 3 then return jsonb_build_object('locked', 'limit', 'used', used); end if;
       insert into adv_views (user_id, ex_id, day) values (auth.uid(), p_ex, vn_today());
       used := used + 1;
     end if;
@@ -1234,6 +1234,31 @@ begin
 end $$;
 revoke execute on function public.do_checkin() from public, anon;
 grant execute on function public.do_checkin() to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 12. Bỏ quảng cáo: lời giải, tài liệu "cần đăng nhập", trang web hữu ích chỉ cần tài khoản miễn phí
+-- ---------------------------------------------------------------------
+create or replace function public.get_solution(p_ex bigint, p_via_ad boolean default false) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare k exercise_keys; e exercises;
+begin
+  if auth.uid() is null then raise exception 'Cần đăng nhập (miễn phí) để xem lời giải'; end if;
+  select * into e from exercises where id = p_ex and (published or is_teacher());
+  if not found then raise exception 'Không tìm thấy bài'; end if;
+  -- Bài nâng cao: thành viên phải mở bài (trong giới hạn mỗi ngày) rồi mới xem lời giải
+  if e.level = 'adv' and not adv_unlimited()
+     and not exists (select 1 from adv_views where user_id = auth.uid() and ex_id = p_ex) then
+    raise exception 'Hãy mở bài này trước khi xem lời giải';
+  end if;
+  select * into k from exercise_keys where exercise_id = p_ex;
+  return jsonb_build_object('solution', k.solution, 'answer_images', k.answer_images, 'short_answer', k.short_answer);
+end $$;
+
+create or replace function public.open_link(p_id bigint) returns text
+language sql stable security definer set search_path = public as $$
+  select u.url from useful_link_urls u join useful_links l on l.id = u.link_id
+  where l.id = p_id and (l.published or is_teacher()) and auth.uid() is not null;
+$$;
 
 -- ---------------------------------------------------------------------
 -- 8. Đặt thầy làm quản trị (chạy SAU khi thầy đã đăng nhập trang một lần):
