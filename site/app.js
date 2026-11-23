@@ -1114,7 +1114,7 @@
         rr.appendChild(el("span", null, "Mã giới thiệu của bạn: ")); var bb = el("b", null, rc); bb.style.cssText = "font-size:18px;letter-spacing:1px"; rr.appendChild(bb);
         rr.appendChild(button("ghost sm", "Sao chép", function () { try { navigator.clipboard.writeText(rc); } catch (e) {} toast("Đã sao chép mã " + rc); }));
         rb.appendChild(rr);
-        rb.appendChild(el("p", "note", "Bạn bè nhập mã này khi mua: bạn ấy được giảm 5% giá tài liệu. Bạn được cộng 5% ưu đãi: bạn ấy mua tài liệu thì cộng vào ưu đãi tài liệu, mua khóa học thì cộng vào ưu đãi khóa học (mỗi loại cộng dồn tối đa 50%)."));
+        rb.appendChild(el("p", "note", "Bạn bè nhập mã này khi mua: bạn ấy được giảm 5% giá tài liệu. Bạn được cộng 5% ưu đãi: bạn ấy mua tài liệu thì cộng vào ưu đãi tài liệu, mua khóa học thì cộng vào ưu đãi khóa học (mỗi loại cộng dồn tối đa 50%). Mỗi lần mua, tổng mọi khoản giảm (kể cả VIP) không quá 50% giá gốc."));
         var cr = LV.prof.ref_credit || 0, cc = LV.prof.ref_credit_course || 0;
         rb.appendChild(el("p", null, cr || cc ? "Ưu đãi đang có: " + [cr ? "giảm " + cr + "% tài liệu tiếp theo" : "", cc ? "giảm " + cc + "% lần mua khóa học tiếp theo" : ""].filter(Boolean).join(" · ") + "." : "Bạn chưa có ưu đãi tích lũy."));
         box.appendChild(rb);
@@ -1668,7 +1668,7 @@
           if (o.vip_off) parts.push("VIP −15%");
           if (o.credit) parts.push("ưu đãi tích lũy −" + o.credit + "%");
           if (o.ref && o.ref_off) parts.push("mã giới thiệu " + o.ref + " −5%");
-          box.appendChild(el("p", "note", parts.join(" · ") + " → còn " + vnd(o.amount)));
+          box.appendChild(el("p", "note", parts.join(" · ") + " → còn " + vnd(o.amount) + (o.capped ? " (đã chạm mức giảm tối đa 50% giá gốc; phần ưu đãi chưa dùng được giữ lại)" : "")));
         }
         if (REF_TYPES.indexOf(o.type) >= 0) {
           if (o.ref) box.appendChild(el("p", "note", "Đã áp dụng mã giới thiệu " + o.ref + (o.ref_off ? "." : " (người giới thiệu được cộng ưu đãi khóa học; mức giảm 5% cho người mua chỉ áp dụng với tài liệu).")));

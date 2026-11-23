@@ -1350,7 +1350,7 @@ alter table profiles add column if not exists ref_credit_course int not null def
 drop function if exists public.create_order(text, bigint);
 create or replace function public.create_order(p_type text, p_item bigint default null, p_ref text default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare amt int; base int; c text; p profiles; rid uuid; credit int := 0; rc text := upper(trim(coalesce(p_ref, '')));
+declare amt int; base int; c text; p profiles; rid uuid; credit int := 0; lst int; pre numeric; cf numeric; lo numeric; rc text := upper(trim(coalesce(p_ref, '')));
 begin
   if auth.uid() is null then raise exception 'Cần đăng nhập'; end if;
   select * into p from profiles where id = auth.uid();
@@ -1371,13 +1371,28 @@ begin
       raise exception 'Mã giới thiệu chỉ dùng khi mua tài liệu hoặc khóa học';
     end if;
   end if;
-  if p_type in ('doc', 'doc_renew') then
-    -- doc_price đã gồm giảm VIP 15% / Học viên 50%
-    credit := least(greatest(coalesce(p.ref_credit, 0), 0), 50);
-    amt := round(amt * (100 - credit) / 100.0 * (case when rid is null then 1 else 0.95 end) / 1000) * 1000;
-  elsif p_type in ('student', 'student_renew', 'lesson') then
-    credit := least(greatest(coalesce(p.ref_credit_course, 0), 0), 50);
-    amt := round(amt * (case when role_of(auth.uid()) = 'vip' then 0.85 else 1 end) * (100 - credit) / 100.0 / 1000) * 1000;
+  -- Giá gốc (lst), giá sau giảm theo hạng (pre), rồi ưu đãi tích lũy và mã giới thiệu.
+  -- Tổng mọi khoản giảm không quá 50% giá gốc; phần ưu đãi tích lũy chưa dùng được giữ lại.
+  if p_type in ('doc', 'doc_renew', 'student', 'student_renew', 'lesson') then
+    if p_type in ('doc', 'doc_renew') then
+      select price into lst from shop_docs where id = p_item;
+      pre := amt;                               -- doc_price đã gồm VIP 15% / Học viên 50% / gia hạn 50%
+      credit := least(greatest(coalesce(p.ref_credit, 0), 0), 50);
+      cf := case when rid is null then 1 else 0.95 end;
+    else
+      if p_type = 'student_renew' then select amount into lst from prices where key = 'student'; else lst := amt; end if;
+      lst := greatest(coalesce(lst, amt), amt);
+      pre := amt * (case when role_of(auth.uid()) = 'vip' then 0.85 else 1 end);
+      credit := least(greatest(coalesce(p.ref_credit_course, 0), 0), 50);
+      cf := 1;
+    end if;
+    lo := least(pre, lst * 0.5);                -- giá thấp nhất được phép
+    if pre * cf * (100 - credit) / 100.0 < lo then
+      -- chỉ dùng phần ưu đãi cần thiết để chạm mức 50%
+      credit := least(credit, greatest(0, ceil((1 - lo / (pre * cf)) * 100)::int));
+    end if;
+    amt := round(greatest(pre * cf * (100 - credit) / 100.0, lo) / 1000) * 1000;
+    base := lst;
   end if;
   loop
     c := 'HHTP' || lpad((floor(random() * 1000000))::text, 6, '0');
@@ -1387,7 +1402,8 @@ begin
   values (c, auth.uid(), p_type, p_item, amt, base, rid, credit);
   return jsonb_build_object('code', c, 'amount', amt, 'type', p_type, 'base', base, 'credit', credit,
     'ref', case when rid is null then null else rc end, 'ref_off', rid is not null and p_type in ('doc', 'doc_renew'),
-    'vip_off', p_type in ('student', 'student_renew', 'lesson') and role_of(auth.uid()) = 'vip');
+    'vip_off', p_type in ('student', 'student_renew', 'lesson') and role_of(auth.uid()) = 'vip',
+    'capped', amt <= round(lst * 0.5 / 1000) * 1000 and (credit > 0 or rid is not null));
 end $$;
 
 create or replace function public.fulfill_order(p_code text, p_amount int, p_bank_ref text) returns text
