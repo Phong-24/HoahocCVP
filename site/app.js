@@ -788,7 +788,7 @@
     var box = $("tiers"); box.innerHTML = "";
     var T = [
       { k: "member", name: "Miễn phí", cost: "0đ", per: "", items: ["Bài tập cơ bản: làm và xem đáp án tự do", "Đăng nhập: xem mọi lời giải chi tiết, tài liệu miễn phí, trang web học tập", "Bài nâng cao: tối đa " + ADV_LIMIT + " bài mỗi ngày", "Bình luận, hỏi đáp, chat với thầy, điểm danh nhận VIP"] },
-      { k: "vip", name: "VIP", cost: "150.000đ", per: "/tháng · hoặc 1.500.000đ/năm", items: ["Bài nâng cao không giới hạn", "Mọi lời giải chi tiết, tài liệu miễn phí", "Giảm 15% khi mua tài liệu trả phí", "Khóa học hiện hành: cần gói Học viên", "Mua theo năm tiết kiệm 300.000đ so với 12 tháng lẻ"], mark: true },
+      { k: "vip", name: "VIP", cost: "150.000đ", per: "/tháng · hoặc 1.500.000đ/năm", items: ["Bài nâng cao không giới hạn", "Mọi lời giải chi tiết, tài liệu miễn phí", "Giảm 15% khi mua tài liệu trả phí và khóa học (gói Học viên)", "Vẫn được dùng mã giới thiệu, ưu đãi tích lũy như mọi thành viên", "Mua theo năm tiết kiệm 300.000đ so với 12 tháng lẻ"], mark: true },
       { k: "student", name: "Học viên", cost: st.studentExpired ? "4.000.000đ" : "8.000.000đ", per: st.studentExpired ? "/năm · giá gia hạn (giảm 50%)" : "/năm", items: ["Học miễn phí khóa Hữu cơ của năm đăng ký; truy cập miễn phí tài liệu, video ở Khóa học hiện hành", "Bài nâng cao không giới hạn, mọi lời giải chi tiết", "Mở khóa miễn phí mục Bài giảng lý thuyết và bài tập ứng dụng, Bài tập theo chương", "Giảm 50% khi mua tài liệu ở các mục còn lại", "Hết hạn: tài khoản trở về Thành viên thường; gia hạn được giảm 50% (4.000.000đ/năm)"] }
     ];
     T.forEach(function (t) {
@@ -864,7 +864,8 @@
       if (st.access) bx.appendChild(el("span", "chip amber", "Học viên vào giữa khóa · mở từ buổi " + st.access.from + (st.access.extra.length ? " + buổi " + st.access.extra.join(", ") : "") + " · hết hạn " + vnDate(st.access.exp)));
       else bx.appendChild(el("span", "chip amber", "Học viên: truy cập toàn bộ khóa học"));
     } else {
-      bx.appendChild(el("span", "price", "8.000.000đ")); bx.appendChild(el("span", "note", "gói Học viên, gồm toàn bộ khóa"));
+      if (st.role === "vip") { var pv = el("span", "price"); var o8 = el("s", null, "8.000.000đ"); o8.style.cssText = "color:var(--muted);font-size:13px;margin-right:6px"; pv.appendChild(o8); pv.appendChild(document.createTextNode("6.800.000đ")); bx.appendChild(pv); bx.appendChild(el("span", "note", "gói Học viên, VIP giảm 15%")); }
+      else { bx.appendChild(el("span", "price", "8.000.000đ")); bx.appendChild(el("span", "note", "gói Học viên, gồm toàn bộ khóa")); }
       bx.appendChild(button("amber", "Đăng ký gói Học viên", buyStudent));
     }
     hd.appendChild(bx);
@@ -1113,9 +1114,9 @@
         rr.appendChild(el("span", null, "Mã giới thiệu của bạn: ")); var bb = el("b", null, rc); bb.style.cssText = "font-size:18px;letter-spacing:1px"; rr.appendChild(bb);
         rr.appendChild(button("ghost sm", "Sao chép", function () { try { navigator.clipboard.writeText(rc); } catch (e) {} toast("Đã sao chép mã " + rc); }));
         rb.appendChild(rr);
-        rb.appendChild(el("p", "note", "Bạn bè nhập mã này khi mua tài liệu hoặc khóa học: bạn ấy được giảm 5% tài liệu, còn bạn được cộng 5% ưu đãi cho tài liệu tiếp theo (cộng dồn tối đa 50%)."));
-        var cr = LV.prof.ref_credit || 0;
-        rb.appendChild(el("p", null, cr ? "Ưu đãi đang có: giảm " + cr + "% cho tài liệu tiếp theo bạn mua." : "Bạn chưa có ưu đãi tích lũy."));
+        rb.appendChild(el("p", "note", "Bạn bè nhập mã này khi mua: bạn ấy được giảm 5% giá tài liệu. Bạn được cộng 5% ưu đãi: bạn ấy mua tài liệu thì cộng vào ưu đãi tài liệu, mua khóa học thì cộng vào ưu đãi khóa học (mỗi loại cộng dồn tối đa 50%)."));
+        var cr = LV.prof.ref_credit || 0, cc = LV.prof.ref_credit_course || 0;
+        rb.appendChild(el("p", null, cr || cc ? "Ưu đãi đang có: " + [cr ? "giảm " + cr + "% tài liệu tiếp theo" : "", cc ? "giảm " + cc + "% lần mua khóa học tiếp theo" : ""].filter(Boolean).join(" · ") + "." : "Bạn chưa có ưu đãi tích lũy."));
         box.appendChild(rb);
       }
       var nk = el("input", "inp"); nk.id = "nickEdit"; nk.maxLength = 24; nk.value = LV.prof ? LV.prof.nick : st.nick; fld(box, "Tên thành viên (hiển thị là Tên_" + (LV.prof && LV.prof.ref_code || "MÃ") + ")", nk);
@@ -1664,12 +1665,13 @@
         box.appendChild(dl);
         if (o.base && o.base !== o.amount) {
           var parts = ["Giá " + vnd(o.base)];
+          if (o.vip_off) parts.push("VIP −15%");
           if (o.credit) parts.push("ưu đãi tích lũy −" + o.credit + "%");
           if (o.ref && o.ref_off) parts.push("mã giới thiệu " + o.ref + " −5%");
           box.appendChild(el("p", "note", parts.join(" · ") + " → còn " + vnd(o.amount)));
         }
         if (REF_TYPES.indexOf(o.type) >= 0) {
-          if (o.ref) box.appendChild(el("p", "note", "Đã áp dụng mã giới thiệu " + o.ref + (o.ref_off ? "." : " (người giới thiệu được cộng ưu đãi; mã giảm 5% chỉ áp dụng cho tài liệu).")));
+          if (o.ref) box.appendChild(el("p", "note", "Đã áp dụng mã giới thiệu " + o.ref + (o.ref_off ? "." : " (người giới thiệu được cộng ưu đãi khóa học; mức giảm 5% cho người mua chỉ áp dụng với tài liệu).")));
           else {
             var rf = el("form", "mrow"); rf.style.cssText = "justify-content:flex-start;align-items:center";
             var ri = el("input", "inp"); ri.type = "text"; ri.placeholder = "Mã giới thiệu (nếu có)"; ri.setAttribute("aria-label", "Mã giới thiệu"); ri.style.maxWidth = "220px"; ri.maxLength = 40;

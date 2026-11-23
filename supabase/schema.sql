@@ -1344,6 +1344,8 @@ end $$;
 alter table orders add column if not exists base_amount int;
 alter table orders add column if not exists ref_by uuid references profiles(id) on delete set null;
 alter table orders add column if not exists credit_used int not null default 0;
+-- Ưu đãi tích lũy tách 2 loại: dùng cho tài liệu (ref_credit) và dùng cho khóa học (ref_credit_course)
+alter table profiles add column if not exists ref_credit_course int not null default 0;
 
 drop function if exists public.create_order(text, bigint);
 create or replace function public.create_order(p_type text, p_item bigint default null, p_ref text default null) returns jsonb
@@ -1370,8 +1372,12 @@ begin
     end if;
   end if;
   if p_type in ('doc', 'doc_renew') then
+    -- doc_price đã gồm giảm VIP 15% / Học viên 50%
     credit := least(greatest(coalesce(p.ref_credit, 0), 0), 50);
     amt := round(amt * (100 - credit) / 100.0 * (case when rid is null then 1 else 0.95 end) / 1000) * 1000;
+  elsif p_type in ('student', 'student_renew', 'lesson') then
+    credit := least(greatest(coalesce(p.ref_credit_course, 0), 0), 50);
+    amt := round(amt * (case when role_of(auth.uid()) = 'vip' then 0.85 else 1 end) * (100 - credit) / 100.0 / 1000) * 1000;
   end if;
   loop
     c := 'HHTP' || lpad((floor(random() * 1000000))::text, 6, '0');
@@ -1380,7 +1386,8 @@ begin
   insert into orders (code, user_id, item_type, item_id, amount, base_amount, ref_by, credit_used)
   values (c, auth.uid(), p_type, p_item, amt, base, rid, credit);
   return jsonb_build_object('code', c, 'amount', amt, 'type', p_type, 'base', base, 'credit', credit,
-    'ref', case when rid is null then null else rc end, 'ref_off', rid is not null and p_type in ('doc', 'doc_renew'));
+    'ref', case when rid is null then null else rc end, 'ref_off', rid is not null and p_type in ('doc', 'doc_renew'),
+    'vip_off', p_type in ('student', 'student_renew', 'lesson') and role_of(auth.uid()) = 'vip');
 end $$;
 
 create or replace function public.fulfill_order(p_code text, p_amount int, p_bank_ref text) returns text
@@ -1408,14 +1415,25 @@ begin
   end if;
   -- Ưu đãi tích lũy đã dùng cho đơn này
   if o.credit_used > 0 then
-    update profiles set ref_credit = greatest(ref_credit - o.credit_used, 0) where id = o.user_id;
+    if o.item_type in ('doc', 'doc_renew') then
+      update profiles set ref_credit = greatest(ref_credit - o.credit_used, 0) where id = o.user_id;
+    else
+      update profiles set ref_credit_course = greatest(ref_credit_course - o.credit_used, 0) where id = o.user_id;
+    end if;
   end if;
-  -- Người giới thiệu được cộng 5% (tối đa 50%) cho tài liệu tiếp theo
+  -- Người giới thiệu được cộng 5% (tối đa 50%): mua tài liệu → ưu đãi tài liệu; mua khóa học → ưu đãi khóa học
   if o.ref_by is not null and o.ref_by <> o.user_id then
-    update profiles set ref_credit = least(ref_credit + 5, 50) where id = o.ref_by returning ref_credit into nc;
-    insert into notifications (user_id, kind, title, body, link)
-    values (o.ref_by, 'ref', 'Bạn được cộng 5% ưu đãi nhờ mã giới thiệu',
-      'Ưu đãi hiện có: giảm ' || nc || '% cho tài liệu tiếp theo bạn mua.', 'member');
+    if o.item_type in ('doc', 'doc_renew') then
+      update profiles set ref_credit = least(ref_credit + 5, 50) where id = o.ref_by returning ref_credit into nc;
+      insert into notifications (user_id, kind, title, body, link)
+      values (o.ref_by, 'ref', 'Bạn được cộng 5% ưu đãi mua tài liệu nhờ mã giới thiệu',
+        'Ưu đãi hiện có: giảm ' || nc || '% cho tài liệu tiếp theo bạn mua.', 'member');
+    elsif o.item_type in ('student', 'student_renew', 'lesson') then
+      update profiles set ref_credit_course = least(ref_credit_course + 5, 50) where id = o.ref_by returning ref_credit_course into nc;
+      insert into notifications (user_id, kind, title, body, link)
+      values (o.ref_by, 'ref', 'Bạn được cộng 5% ưu đãi mua khóa học nhờ mã giới thiệu',
+        'Ưu đãi hiện có: giảm ' || nc || '% cho lần mua khóa học tiếp theo.', 'member');
+    end if;
   end if;
   return 'ok';
 end $$;
