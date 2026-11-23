@@ -626,14 +626,26 @@ begin
 end $$;
 
 -- Học sinh nhập mã kích hoạt
+-- Nhập sai mã quá 5 lần trong 24 giờ thì bị tạm khóa, chống dò mã
+create table if not exists public.code_attempts (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references profiles(id) on delete cascade,
+  at timestamptz not null default now()
+);
+alter table code_attempts enable row level security;
 create or replace function public.redeem_code(p_code text) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare c activation_codes;
 begin
   if auth.uid() is null then raise exception 'Cần đăng nhập'; end if;
+  if (select count(*) from code_attempts where user_id = auth.uid() and at > now() - interval '24 hours') >= 5 then
+    return jsonb_build_object('error', 'Bạn đã nhập sai mã quá 5 lần. Hãy thử lại sau 24 giờ hoặc nhắn Zalo cho thầy.');
+  end if;
   select * into c from activation_codes where code = upper(trim(p_code)) for update;
-  if not found then raise exception 'Mã không đúng'; end if;
-  if c.used_by is not null then raise exception 'Mã đã được dùng'; end if;
+  if not found or c.used_by is not null then
+    insert into code_attempts (user_id) values (auth.uid());   -- lưu lại (không raise để không mất bản ghi)
+    return jsonb_build_object('error', case when c.code is not null then 'Mã đã được dùng' else 'Mã không đúng' end);
+  end if;
   update activation_codes set used_by = auth.uid(), used_at = now() where code = c.code;
   update profiles set student_until = (c.expires_on + 1)::timestamptz, student_from_lesson = c.from_lesson,
          student_extra_lessons = '{}', student_ever = true,
@@ -669,7 +681,7 @@ begin
   if not is_teacher() then raise exception 'Chỉ thầy được tạo mã'; end if;
   loop
     s := '';
-    for i in 1..4 loop s := s || substr(alphabet, 1 + floor(random() * length(alphabet))::int, 1); end loop;
+    for i in 1..8 loop s := s || substr(alphabet, 1 + floor(random() * length(alphabet))::int, 1); end loop;  -- 8 ký tự: không dò được
     v_code := 'HC-B' || p_from || '-' || s;
     exit when not exists (select 1 from activation_codes a where a.code = v_code);
   end loop;
@@ -1327,13 +1339,27 @@ create table if not exists public.active_sessions (
 );
 alter table active_sessions enable row level security;   -- chỉ đọc/ghi qua hàm
 
-create or replace function public.claim_session(p_device text default null) returns void
+alter table active_sessions add column if not exists session_started timestamptz;
+-- Chỉ lần đăng nhập MỚI HƠN mới chiếm được chỗ; thiết bị cũ (phiên cũ) không tự chiếm lại được
+drop function if exists public.claim_session(text);
+create or replace function public.claim_session(p_device text default null) returns boolean
 language plpgsql security definer set search_path = public as $$
-declare sid text := auth.jwt()->>'session_id';
+declare sid text := auth.jwt()->>'session_id'; started timestamptz; a active_sessions;
 begin
-  if auth.uid() is null or sid is null then return; end if;
-  insert into active_sessions (user_id, session_id, device) values (auth.uid(), sid, left(p_device, 200))
-  on conflict (user_id) do update set session_id = excluded.session_id, device = excluded.device, claimed_at = now();
+  if auth.uid() is null or sid is null then return true; end if;
+  begin
+    select s.created_at into started from auth.sessions s where s.id = sid::uuid and s.user_id = auth.uid();
+  exception when others then started := null;
+  end;
+  started := coalesce(started, to_timestamp((auth.jwt()->>'iat')::bigint));
+  select * into a from active_sessions where user_id = auth.uid();
+  if found and a.session_id <> sid and a.session_started is not null and started < a.session_started then
+    return false;
+  end if;
+  insert into active_sessions (user_id, session_id, device, session_started) values (auth.uid(), sid, left(p_device, 200), started)
+  on conflict (user_id) do update set session_id = excluded.session_id, device = excluded.device,
+    session_started = excluded.session_started, claimed_at = now();
+  return true;
 end $$;
 
 -- Phiên hiện tại còn hợp lệ không (thầy dùng nhiều thiết bị được)
@@ -1381,6 +1407,9 @@ language plpgsql security definer set search_path = public as $$
 declare amt int; base int; c text; p profiles; rid uuid; credit int := 0; lst int; pre numeric; cf numeric; lo numeric; rc text := upper(trim(coalesce(p_ref, '')));
 begin
   if auth.uid() is null then raise exception 'Cần đăng nhập'; end if;
+  if p_type not in ('doc', 'doc_renew', 'vip_month', 'vip_year', 'student', 'student_renew', 'lesson') then raise exception 'Loại đơn không hợp lệ'; end if;
+  if p_type = 'student_renew' then p_type := 'student'; end if;   -- giá gia hạn do máy tự xét, không cho tự chọn
+  if p_type = 'lesson' and role_of(auth.uid()) <> 'student' then raise exception 'Chỉ học viên mới mua lẻ buổi học'; end if;
   select * into p from profiles where id = auth.uid();
   if p_type in ('doc', 'doc_renew') then amt := doc_price(p_item);
   elsif p_type = 'lesson' then select amount into amt from prices where key = 'lesson';

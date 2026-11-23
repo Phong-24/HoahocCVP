@@ -1221,6 +1221,7 @@
   function liveRedeem(code) {
     return sb.rpc("redeem_code", { p_code: code }).then(function (r) {
       if (r.error) return r.error.message.replace(/^.*?:\s*/, "");
+      if (r.data && r.data.error) return r.data.error;
       return sb.auth.getSession().then(function (s) { return liveSession(s.data.session); }).then(function () { return ""; });
     });
   }
@@ -1588,7 +1589,7 @@
     var mine = null; try { mine = localStorage.getItem("hhtp-sid"); } catch (e) {}
     if (mine !== sid) {
       // Lần đăng nhập mới trên thiết bị này: giữ chỗ, thiết bị cũ sẽ bị đăng xuất
-      sb.rpc("claim_session", { p_device: deviceName() }).then(function (r) { if (!r.error) { try { localStorage.setItem("hhtp-sid", sid); } catch (e) {} } });
+      sb.rpc("claim_session", { p_device: deviceName() }).then(function (r) { if (r.data === false) { kicked(); return; } if (!r.error) { try { localStorage.setItem("hhtp-sid", sid); } catch (e) {} } });
     } else checkDevice();
     DG.timer = setInterval(checkDevice, 60000);
   }
