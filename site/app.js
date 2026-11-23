@@ -658,11 +658,12 @@
       d.vids.forEach(function (t, vi) {
         var li = el("li");
         if (unlocked) { var a = el("button", "linkbtn", "▶ " + t); a.type = "button"; a.addEventListener("click", function () { playVideo(d, t, vi); }); li.appendChild(a); }
+        else if (trialDoc(d)) { var a3 = el("button", "linkbtn", "▶ Học thử miễn phí: " + t); a3.type = "button"; a3.addEventListener("click", function () { if (!logged()) { showLogin("Đăng nhập (miễn phí) để học thử", function () { playVideo(d, t, vi); }); return; } playVideo(d, t, vi); }); li.appendChild(a3); }
         else { li.className = "locked"; li.appendChild(el("span", null, "🔒 " + t)); }
         ul.appendChild(li);
       });
       v.appendChild(ul);
-      if (!unlocked) v.appendChild(el("span", "note", "Link video mở sau khi thanh toán"));
+      if (!unlocked) v.appendChild(el("span", "note", trialDoc(d) ? "Buổi học thử: xem video miễn phí trên trang (cần đăng nhập, không tải về). File PDF mở sau khi thanh toán." : "Link video mở sau khi thanh toán"));
       x.appendChild(v);
     }
     c.insertBefore(x, c.querySelector(".act"));
@@ -818,6 +819,8 @@
     return true;
   }
   function lessonRange(a, b) { return b < a ? "không buổi nào" : a === b ? "buổi " + a : "buổi " + a + "–" + b; }
+  /* Học thử: 2 buổi đầu của 2 mục bài giảng, chỉ video */
+  function trialDoc(d) { var n = docLesson(d); return STUDENT_FREE.indexOf(d.cat) >= 0 && n != null && n >= 1 && n <= 2; }
   function docLesson(d) { var m = /^Buổi\s+(\d+)$/.exec(d.tag || ""); return m ? +m[1] : null; }
   function studentDocOpen(d) {
     if (STUDENT_FREE.indexOf(d.cat) < 0) return false;
@@ -879,16 +882,18 @@
       hd.appendChild(cw);
     }
     var box = $("lessons"); box.innerHTML = "";
+    var trialNs = C.lessons.map(function (l) { return l.n; }).sort(function (a, b) { return a - b; }).slice(0, 2);
     C.lessons.forEach(function (l) {
-      var open = lessonOpen(l.n);
+      var open = lessonOpen(l.n), trial = !open && trialNs.indexOf(l.n) >= 0;
       var c = el("article", "card lesson");
       var top = el("div", "q-top"); var lb = el("span", "lvl", "Buổi " + l.n + " · " + l.d); if (l.isNew) { var nw = el("span", "badge ok", "Mới"); nw.style.marginLeft = "6px"; lb.appendChild(nw); } top.appendChild(lb);
       top.appendChild(el("span", "note", l.docs.length + " tài liệu · " + l.vids.length + " video")); c.appendChild(top);
       c.appendChild(el("h3", null, l.t));
       var ul = el("ul", "res");
       l.docs.forEach(function (d, di) { var li = el("li"); if (open) { var b = el("button", "linkbtn", "📄 " + d); b.type = "button"; b.addEventListener("click", function () { if (LIVE && l.docIds) { liveFile("lesson_file", l.docIds[di], "view", d); return; } toast("Bản thật mở/tải PDF: " + d); }); li.appendChild(b); } else { li.className = "locked"; li.textContent = "🔒 " + d; } ul.appendChild(li); });
-      l.vids.forEach(function (v, vi) { var li = el("li"); if (open) { var b = el("button", "linkbtn", "▶ " + v); b.type = "button"; b.addEventListener("click", function () { playVideo({ title: C.name + " · Buổi " + l.n, lessonFileId: l.vidIds && l.vidIds[vi] }, v); }); li.appendChild(b); } else { li.className = "locked"; li.textContent = "🔒 " + v; } ul.appendChild(li); });
+      l.vids.forEach(function (v, vi) { var li = el("li"); if (open || trial) { var b = el("button", "linkbtn", "▶ " + v); b.type = "button"; b.addEventListener("click", function () { var go = function () { playVideo({ title: C.name + " · Buổi " + l.n, lessonFileId: l.vidIds && l.vidIds[vi] }, v); }; if (trial && !logged()) { showLogin("Đăng nhập (miễn phí) để học thử", go); return; } go(); }); if (trial) b.textContent = "▶ Học thử miễn phí: " + v; li.appendChild(b); } else { li.className = "locked"; li.textContent = "🔒 " + v; } ul.appendChild(li); });
       c.appendChild(ul);
+      if (trial) c.appendChild(el("p", "note", "Buổi học thử: video xem miễn phí trên trang (cần đăng nhập, không tải về). Tài liệu PDF mở khi đăng ký gói Học viên."));
       if (!open && LIVE && st.win && st.win.kept && l.n >= st.win.to) c.appendChild(el("p", "note", "Bạn đã nghỉ từ buổi " + st.win.to + " nên không xem được buổi này."));
       if (!open && st.role === "student" && st.access) {
         c.appendChild(el("p", "note", "Buổi học trước khi bạn vào khóa."));
@@ -1102,11 +1107,23 @@
       if (LV.prof && LV.prof.vip_until && new Date(LV.prof.vip_until) > new Date()) { dl.appendChild(el("dt", null, "VIP đến")); dl.appendChild(el("dd", null, vnDate(LV.prof.vip_until))); }
       if (LV.prof && LV.prof.student_until && new Date(LV.prof.student_until) > new Date()) { dl.appendChild(el("dt", null, "Học viên đến")); dl.appendChild(el("dd", null, vnDate(LV.prof.student_until))); }
       box.appendChild(dl);
-      var nk = el("input", "inp"); nk.id = "nickEdit"; nk.maxLength = 24; nk.value = st.nick; fld(box, "Biệt danh (hiện khi bình luận, hỏi đáp)", nk);
+      if (LV.prof && LV.prof.ref_code) {
+        var rc = LV.prof.ref_code, rb = el("div", "codebox");
+        var rr = el("div", "mrow"); rr.style.cssText = "justify-content:flex-start;align-items:center";
+        rr.appendChild(el("span", null, "Mã giới thiệu của bạn: ")); var bb = el("b", null, rc); bb.style.cssText = "font-size:18px;letter-spacing:1px"; rr.appendChild(bb);
+        rr.appendChild(button("ghost sm", "Sao chép", function () { try { navigator.clipboard.writeText(rc); } catch (e) {} toast("Đã sao chép mã " + rc); }));
+        rb.appendChild(rr);
+        rb.appendChild(el("p", "note", "Bạn bè nhập mã này khi mua tài liệu hoặc khóa học: bạn ấy được giảm 5% tài liệu, còn bạn được cộng 5% ưu đãi cho tài liệu tiếp theo (cộng dồn tối đa 50%)."));
+        var cr = LV.prof.ref_credit || 0;
+        rb.appendChild(el("p", null, cr ? "Ưu đãi đang có: giảm " + cr + "% cho tài liệu tiếp theo bạn mua." : "Bạn chưa có ưu đãi tích lũy."));
+        box.appendChild(rb);
+      }
+      var nk = el("input", "inp"); nk.id = "nickEdit"; nk.maxLength = 24; nk.value = LV.prof ? LV.prof.nick : st.nick; fld(box, "Tên thành viên (hiển thị là Tên_" + (LV.prof && LV.prof.ref_code || "MÃ") + ")", nk);
       row(box, [button("ghost", "Đăng xuất", function () { sb.auth.signOut().then(function () { closeModal(); toast("Đã đăng xuất"); }); }),
-        button("", "Lưu biệt danh", function () {
-          var v = nk.value.trim(); if (v.length < 2) { toast("Biệt danh cần ít nhất 2 ký tự"); return; }
-          sb.rpc("update_my_profile", { p_nick: v, p_phone: LV.prof ? LV.prof.phone : null }).then(function (r) { if (r.error) { sbErr(r.error, /duplicate|unique/i.test(r.error.message) ? "Biệt danh đã có người dùng" : "Chưa lưu được"); return; } st.nick = v; closeModal(); renderAll(); toast("Đã lưu biệt danh"); });
+        button("", "Lưu tên", function () {
+          var v = nk.value.trim(); if (v.length < 2) { toast("Tên cần ít nhất 2 ký tự"); return; }
+          if (v.indexOf("_") >= 0) { toast("Tên không được chứa dấu gạch dưới (_)"); return; }
+          sb.rpc("update_my_profile", { p_nick: v, p_phone: LV.prof ? LV.prof.phone : null }).then(function (r) { if (r.error) { sbErr(r.error, /duplicate|unique/i.test(r.error.message) ? "Biệt danh đã có người dùng" : "Chưa lưu được"); return; } if (LV.prof) LV.prof.nick = v; st.nick = v + (LV.prof && LV.prof.ref_code ? "_" + LV.prof.ref_code : ""); closeModal(); renderAll(); toast("Đã lưu tên"); });
         })]);
     });
   }
@@ -1171,7 +1188,7 @@
     return Promise.all([p1, p2, p3, p4, p5]).then(function (R) {
       var prof = R[0].data; LV.prof = prof;
       if (!prof) return;
-      st.nick = prof.nick; st.role = R[1].data || "member"; st.correct = prof.correct_count || 0;
+      st.nick = prof.nick + (prof.ref_code ? "_" + prof.ref_code : ""); st.role = R[1].data || "member"; st.correct = prof.correct_count || 0;
       st.ans = {}; st.done = {}; st.sol = {};
       (R[2].data || []).forEach(function (a) { if (a.choice != null) st.ans["x" + a.exercise_id] = a.choice; if (a.done) st.done["x" + a.exercise_id] = true; });
       (R[3].data || []).forEach(function (u) { if (u.kind === "solution") st.sol["x" + u.ref_id] = true; });
@@ -1194,7 +1211,7 @@
     BASIC.concat(ADV, ESSAY).forEach(function (q) { delete q._k; delete q._s; });
     NT.items = []; NT.pending = null; CK.loaded = false; CK.days = []; advUsed = 0; chatReset();
     var p = (u ? loadMine(u.id) : Promise.resolve()).then(function () { return Promise.all([loadForum(), loadReviews(), loadShop(), loadExercises(), u ? loadNotifs(true) : null]); });
-    return p.then(function () { pageNow = {}; renderAll(); if (u && LV.after) { var f = LV.after; LV.after = null; f(); } });
+    return p.then(function () { pageNow = {}; renderAll(); deviceGuard(u ? session : null); if (u && LV.after) { var f = LV.after; LV.after = null; f(); } });
   }
   function liveRedeem(code) {
     return sb.rpc("redeem_code", { p_code: code }).then(function (r) {
@@ -1555,6 +1572,41 @@
   }
 
   /* ---- File PDF và video thật ---- */
+  /* ---- Mỗi tài khoản một thiết bị ---- */
+  var DG = { timer: null, kicking: false };
+  function jwtSid(tok) { try { var p = tok.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"); return JSON.parse(decodeURIComponent(escape(atob(p + "===".slice((p.length + 3) % 4))))).session_id || null; } catch (e) { return null; } }
+  function deviceName() { var u = navigator.userAgent || ""; return (/iPhone|iPad/.test(u) ? "iPhone/iPad" : /Android/.test(u) ? "Android" : /Mac/.test(u) ? "Mac" : /Windows/.test(u) ? "Windows" : "Thiết bị khác") + " · " + (/Edg\//.test(u) ? "Edge" : /Chrome\//.test(u) ? "Chrome" : /Safari\//.test(u) ? "Safari" : /Firefox\//.test(u) ? "Firefox" : "Trình duyệt"); }
+  function deviceGuard(session) {
+    clearInterval(DG.timer); DG.timer = null;
+    if (!session || st.role === "teacher") return;
+    var sid = jwtSid(session.access_token); if (!sid) return;
+    var mine = null; try { mine = localStorage.getItem("hhtp-sid"); } catch (e) {}
+    if (mine !== sid) {
+      // Lần đăng nhập mới trên thiết bị này: giữ chỗ, thiết bị cũ sẽ bị đăng xuất
+      sb.rpc("claim_session", { p_device: deviceName() }).then(function (r) { if (!r.error) { try { localStorage.setItem("hhtp-sid", sid); } catch (e) {} } });
+    } else checkDevice();
+    DG.timer = setInterval(checkDevice, 60000);
+  }
+  function checkDevice() {
+    if (!logged() || st.role === "teacher" || DG.kicking) return;
+    sb.rpc("session_ok").then(function (r) { if (r.data === false) kicked(); });
+  }
+  document.addEventListener("visibilitychange", function () { if (LIVE && document.visibilityState === "visible") checkDevice(); });
+  function kicked() {
+    if (DG.kicking) return; DG.kicking = true; clearInterval(DG.timer);
+    try { localStorage.removeItem("hhtp-sid"); } catch (e) {}
+    sb.auth.signOut({ scope: "local" }).then(function () {
+      setTimeout(function () {
+        DG.kicking = false;
+        openModal(function (box) {
+          head(box, "Đã đăng xuất trên thiết bị này", "Mỗi tài khoản chỉ dùng trên 1 thiết bị tại một thời điểm");
+          box.appendChild(el("p", null, "Tài khoản của bạn vừa được đăng nhập trên một thiết bị khác, nên phiên ở đây đã tự đăng xuất. Nếu muốn học tiếp trên thiết bị này, hãy đăng nhập lại (thiết bị kia sẽ bị đăng xuất)."));
+          box.appendChild(el("p", "note", "Nếu không phải bạn đăng nhập, hãy đổi mật khẩu và nhắn Zalo cho thầy."));
+          row(box, [button("ghost", "Đóng", closeModal), button("", "Đăng nhập lại", function () { closeModal(); showLogin(); })]);
+        });
+      }, 400);
+    });
+  }
   function authToken() { return sb.auth.getSession().then(function (s) { return s.data.session ? s.data.session.access_token : ""; }); }
   function liveFile(type, id, mode, title) {
     if (type !== "free_doc" && !logged()) { showLogin("Đăng nhập để mở tài liệu"); return; }
@@ -1564,7 +1616,7 @@
     authToken().then(function (tok) {
       return fetch("/api/file?type=" + type + "&id=" + id + "&mode=" + (mode === "view" ? "view" : "download"), { headers: tok ? { Authorization: "Bearer " + tok } : {} });
     }).then(function (r) {
-      if (!r.ok) return r.json().catch(function () { return {}; }).then(function (j) { throw new Error(j.error || ("Lỗi " + r.status)); });
+      if (!r.ok) return r.json().catch(function () { return {}; }).then(function (j) { if (j.kicked) kicked(); throw new Error(j.error || ("Lỗi " + r.status)); });
       return r.blob();
     }).then(function (b) {
       var url = URL.createObjectURL(new Blob([b], { type: "application/pdf" }));
@@ -1581,7 +1633,7 @@
       var holder = el("div", "note", "Đang tải video…"); box.appendChild(holder);
       row(box, [button("ghost", "Đóng", closeModal)]);
       authToken().then(function (tok) { return fetch("/api/video?type=" + type + "&id=" + id, { headers: { Authorization: "Bearer " + tok } }); })
-        .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || ("Lỗi " + r.status)); return j; }); })
+        .then(function (r) { return r.json().then(function (j) { if (!r.ok) { if (j.kicked) { closeModal(); kicked(); } throw new Error(j.error || ("Lỗi " + r.status)); } return j; }); })
         .then(function (j) {
           var fr = el("iframe", "pv vid"); fr.src = j.url; fr.title = t; fr.setAttribute("allow", "accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture"); fr.allowFullscreen = true;
           holder.replaceWith(fr);
@@ -1592,12 +1644,14 @@
 
   /* ---- Thanh toán QR thật ---- */
   function bankCfg() { var b = CFG.bank || {}; return b.bin && b.accountNo ? b : null; }
-  function livePay(type, itemId, title) {
+  var REF_TYPES = ["doc", "doc_renew", "student", "student_renew", "lesson"];
+  function livePay(type, itemId, title, ref) {
     if (!logged()) { showLogin("Đăng nhập để thanh toán", function () { livePay(type, itemId, title); }); return; }
     var bank = bankCfg();
     if (!bank) { openModal(function (box) { head(box, "Thanh toán", title); box.appendChild(el("p", null, "Thầy chưa cấu hình tài khoản nhận tiền. Vui lòng nhắn Zalo cho thầy.")); row(box, [button("", "Đóng", closeModal)]); }); return; }
-    sb.rpc("create_order", { p_type: type, p_item: itemId == null ? null : itemId }).then(function (r) {
-      if (r.error) { sbErr(r.error, "Chưa tạo được đơn"); return; }
+    var args = { p_type: type, p_item: itemId == null ? null : itemId }; if (ref) args.p_ref = ref;
+    sb.rpc("create_order", args).then(function (r) {
+      if (r.error) { if (ref) { var m = r.error.message || ""; var er = document.getElementById("refErr"); if (er) { er.textContent = m; er.hidden = false; } else toast(m); return; } sbErr(r.error, "Chưa tạo được đơn"); return; }
       var o = r.data, memo = ((bank.contentPrefix || "") + " " + o.code).trim();
       openModal(function (box) {
         head(box, "Thanh toán bằng mã QR", title);
@@ -1608,6 +1662,23 @@
         var dl = el("dl", "kv");
         [["Số tiền", vnd(o.amount)], ["Nội dung", memo], ["Ngân hàng", bank.bankName || ""], ["Số tài khoản", bank.accountNo], ["Chủ tài khoản", bank.accountName || ""]].forEach(function (p) { dl.appendChild(el("dt", null, p[0])); dl.appendChild(el("dd", null, p[1])); });
         box.appendChild(dl);
+        if (o.base && o.base !== o.amount) {
+          var parts = ["Giá " + vnd(o.base)];
+          if (o.credit) parts.push("ưu đãi tích lũy −" + o.credit + "%");
+          if (o.ref && o.ref_off) parts.push("mã giới thiệu " + o.ref + " −5%");
+          box.appendChild(el("p", "note", parts.join(" · ") + " → còn " + vnd(o.amount)));
+        }
+        if (REF_TYPES.indexOf(o.type) >= 0) {
+          if (o.ref) box.appendChild(el("p", "note", "Đã áp dụng mã giới thiệu " + o.ref + (o.ref_off ? "." : " (người giới thiệu được cộng ưu đãi; mã giảm 5% chỉ áp dụng cho tài liệu).")));
+          else {
+            var rf = el("form", "mrow"); rf.style.cssText = "justify-content:flex-start;align-items:center";
+            var ri = el("input", "inp"); ri.type = "text"; ri.placeholder = "Mã giới thiệu (nếu có)"; ri.setAttribute("aria-label", "Mã giới thiệu"); ri.style.maxWidth = "220px"; ri.maxLength = 40;
+            var rbt = el("button", "btn sm ghost", "Áp dụng"); rbt.type = "submit";
+            rf.appendChild(ri); rf.appendChild(rbt); box.appendChild(rf);
+            var rer = el("p", "err"); rer.id = "refErr"; rer.hidden = true; box.appendChild(rer);
+            rf.addEventListener("submit", function (e) { e.preventDefault(); var v = ri.value.trim(); if (!v) return; rer.hidden = true; livePay(type, itemId, title, v); });
+          }
+        }
         var stt = el("p", "note", "Quét mã bằng app ngân hàng. Giữ nguyên nội dung " + memo + " để hệ thống tự nhận. Đang chờ tiền về…"); box.appendChild(stt);
         row(box, [button("ghost", "Đóng", closeModal)]);
         var tries = 0;

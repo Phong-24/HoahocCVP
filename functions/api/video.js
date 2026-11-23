@@ -3,7 +3,7 @@
   GET /api/video?type=shop_video|lesson_file&id=123   (gửi kèm Authorization: Bearer <token đăng nhập>)
   Biến môi trường: BUNNY_LIBRARY_ID (Text), BUNNY_TOKEN_KEY (Secret, "Token authentication key" của thư viện).
 */
-import { json, tokenOf, canAccess, secretOf } from "../_lib/common.js";
+import { json, tokenOf, canAccess, secretOf, sessionOk, KICKED, rpcAsUser } from "../_lib/common.js";
 
 async function sha256hex(s) {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -16,7 +16,10 @@ export async function onRequestGet({ request, env }) {
   const type = url.searchParams.get("type"), id = url.searchParams.get("id");
   if (!["shop_video", "lesson_file"].includes(type)) return json({ error: "Loại không hợp lệ" }, 400);
   const token = tokenOf(request);
-  if (!(await canAccess(env, token, type, id))) return json({ error: token ? "Bạn chưa có quyền xem video này." : "Cần đăng nhập." }, 403);
+  if (!(await sessionOk(env, token))) return json(KICKED, 401);
+  // Học thử: 2 video đầu xem miễn phí khi đã đăng nhập (chỉ phát trên trang, không có link tải)
+  const ok = (await canAccess(env, token, type, id)) || (token && (await rpcAsUser(env, token, "preview_ok", { p_type: type, p_id: Number(id) })) === true);
+  if (!ok) return json({ error: token ? "Bạn chưa có quyền xem video này." : "Cần đăng nhập." }, 403);
   const sec = await secretOf(env, type, id);
   if (!sec || !sec.bunny_video_id) return json({ error: "Thầy chưa gắn video này." }, 404);
   const vid = sec.bunny_video_id.trim();

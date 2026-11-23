@@ -4,7 +4,7 @@
   Biến môi trường: SUPABASE_URL, SUPABASE_SERVICE_KEY; ràng buộc R2: FILES.
   Đóng dấu tên người mua lên PDF khi WATERMARK = "1" (cần gói Workers Paid vì xử lý PDF tốn CPU).
 */
-import { json, tokenOf, getUser, canAccess, secretOf, TYPES } from "../_lib/common.js";
+import { json, tokenOf, getUser, canAccess, secretOf, TYPES, sessionOk, KICKED } from "../_lib/common.js";
 
 function ascii(s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").replace(/[^\x20-\x7E]/g, ""); }
 
@@ -26,6 +26,7 @@ export async function onRequestGet({ request, env }) {
   const type = url.searchParams.get("type"), id = url.searchParams.get("id"), mode = url.searchParams.get("mode") === "download" ? "attachment" : "inline";
   if (!TYPES.includes(type) || type === "shop_video") return json({ error: "Loại file không hợp lệ" }, 400);
   const token = tokenOf(request);
+  if (!(await sessionOk(env, token))) return json(KICKED, 401);
   if (!(await canAccess(env, token, type, id))) return json({ error: token ? "Bạn chưa có quyền mở tài liệu này." : "Cần đăng nhập." }, 403);
   const sec = await secretOf(env, type, id);
   if (!sec || !sec.storage_key) return json({ error: "Thầy chưa tải file lên cho tài liệu này." }, 404);

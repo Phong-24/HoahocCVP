@@ -83,4 +83,12 @@ export async function isTeacher(env, token) {
   return !!(p && p.is_teacher);
 }
 
+// Mỗi tài khoản một thiết bị: phiên cũ (bị thiết bị khác thay) không mở được nội dung.
+// Lỗi gọi hàm (null) thì cho qua để không chặn nhầm.
+export async function sessionOk(env, token) {
+  if (!token) return true;
+  return (await rpcAsUser(env, token, "session_ok", {})) !== false;
+}
+export const KICKED = { error: "Tài khoản của bạn đang đăng nhập trên thiết bị khác. Hãy đăng nhập lại để dùng trên thiết bị này.", kicked: true };
+
 export const TYPES = ["free_doc", "shop_doc", "shop_file", "shop_video", "lesson_file"];

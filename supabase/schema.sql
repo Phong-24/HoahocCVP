@@ -22,6 +22,32 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now()
 );
 
+-- Mã giới thiệu: mỗi thành viên một mã; tên hiển thị = Tên_MÃ
+alter table profiles add column if not exists ref_code text;
+alter table profiles add column if not exists ref_credit int not null default 0;  -- % giảm tích lũy cho tài liệu tiếp theo (tối đa 50)
+alter table profiles drop constraint if exists profiles_nick_key;                 -- tên trùng được, vì đã có mã phía sau
+create or replace function public.new_ref_code() returns text
+language plpgsql volatile set search_path = public as $$
+declare c text; a text := 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+begin
+  loop
+    c := '';
+    for i in 1..6 loop c := c || substr(a, 1 + floor(random() * length(a))::int, 1); end loop;
+    exit when not exists (select 1 from profiles where ref_code = c);
+  end loop;
+  return c;
+end $$;
+update profiles set ref_code = new_ref_code() where ref_code is null;
+create unique index if not exists profiles_ref_code on profiles (ref_code);
+create or replace function public.profile_ref_code() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  if new.ref_code is null then new.ref_code := new_ref_code(); end if;
+  return new;
+end $$;
+drop trigger if exists profiles_ref_code on profiles;
+create trigger profiles_ref_code before insert on profiles for each row execute function public.profile_ref_code();
+
 -- Hạng hiện tại: teacher > student > vip > member
 create or replace function public.role_of(uid uuid) returns text
 language sql stable security definer set search_path = public as $$
@@ -44,7 +70,7 @@ language plpgsql security definer set search_path = public as $$
 declare base text; n text; i int := 0;
 begin
   base := coalesce(nullif(new.raw_user_meta_data->>'nick', ''), split_part(coalesce(new.email, 'hocsinh'), '@', 1));
-  base := left(regexp_replace(base, '\s+', '', 'g'), 20);
+  base := left(regexp_replace(base, '[\s_]+', '', 'g'), 20);
   if char_length(base) < 2 then base := 'HocSinh'; end if;
   n := base;
   while exists (select 1 from profiles where nick = n) loop
@@ -66,12 +92,13 @@ create policy "profiles: tự xem" on profiles for select using (id = auth.uid()
 create or replace function public.update_my_profile(p_nick text, p_phone text) returns void
 language plpgsql security definer set search_path = public as $$
 begin
+  if position('_' in coalesce(p_nick, '')) > 0 then raise exception 'Tên không được chứa dấu gạch dưới (_)'; end if;
   update profiles set nick = coalesce(nullif(trim(p_nick), ''), nick), phone = p_phone where id = auth.uid();
 end $$;
 
 -- Biệt danh công khai (dùng hiển thị bình luận, hỏi đáp)
 create or replace view public.public_profiles with (security_invoker = false) as
-  select id, nick, role_of(id) as role from profiles;
+  select id, nick || coalesce('_' || ref_code, '') as nick, role_of(id) as role from profiles;
 grant select on public.public_profiles to anon, authenticated;
 
 -- ---------------------------------------------------------------------
@@ -651,7 +678,7 @@ drop function if exists public.admin_students();
 create or replace function public.admin_students() returns table (
   id uuid, nick text, phone text, student_until timestamptz, student_from_lesson int, student_extra_lessons int[], last_note jsonb)
 language sql stable security definer set search_path = public as $$
-  select p.id, p.nick, p.phone, p.student_until, p.student_from_lesson, p.student_extra_lessons,
+  select p.id, p.nick || coalesce('_' || p.ref_code, ''), p.phone, p.student_until, p.student_from_lesson, p.student_extra_lessons,
     (select data from admin_log l where l.target_id = p.id order by created_at desc limit 1)
   from profiles p
   where is_teacher() and p.student_until is not null
@@ -809,7 +836,7 @@ grant execute on function public.chat_mark_read(uuid) to authenticated;
 -- Thầy: danh sách cuộc trò chuyện
 create or replace function public.chat_threads() returns table (user_id uuid, nick text, email text, last_body text, last_at timestamptz, last_from_teacher boolean, unread int)
 language sql stable security definer set search_path = public as $$
-  select m.user_id, p.nick, u.email::text, l.body, l.created_at, l.sender_id <> l.user_id,
+  select m.user_id, p.nick || coalesce('_' || p.ref_code, ''), u.email::text, l.body, l.created_at, l.sender_id <> l.user_id,
     (select count(*)::int from chat_messages x where x.user_id = m.user_id and not x.read_by_teacher)
   from (select distinct user_id from chat_messages) m
   join profiles p on p.id = m.user_id
@@ -913,7 +940,7 @@ language plpgsql security definer set search_path = public as $$
 declare t topics; who text;
 begin
   select * into t from topics where id = new.topic_id;
-  select nick into who from profiles where id = new.user_id;
+  select nick || coalesce('_' || ref_code, '') into who from profiles where id = new.user_id;
   insert into notifications (user_id, kind, title, body, link)
   select u, 'reply',
     case when u = t.user_id then who || ' đã trả lời câu hỏi của bạn' else who || ' cũng trả lời câu hỏi bạn tham gia' end,
@@ -1113,7 +1140,7 @@ create or replace function public.admin_students() returns table (
   id uuid, nick text, phone text, student_until timestamptz, student_from_lesson int, student_extra_lessons int[],
   student_to_lesson int, student_keep_until timestamptz, last_note jsonb, email text)
 language sql stable security definer set search_path = public as $$
-  select p.id, p.nick, p.phone, p.student_until, p.student_from_lesson, p.student_extra_lessons,
+  select p.id, p.nick || coalesce('_' || p.ref_code, ''), p.phone, p.student_until, p.student_from_lesson, p.student_extra_lessons,
     p.student_to_lesson, p.student_keep_until,
     (select data from admin_log l where l.target_id = p.id order by created_at desc limit 1),
     (select u.email::text from auth.users u where u.id = p.id)
@@ -1125,7 +1152,7 @@ $$;
 -- Thầy tìm tài khoản theo email hoặc biệt danh
 create or replace function public.admin_accounts() returns table (id uuid, nick text, email text, role text, banned_until timestamptz)
 language sql stable security definer set search_path = public as $$
-  select p.id, p.nick, u.email::text, role_of(p.id), p.banned_until
+  select p.id, p.nick || coalesce('_' || p.ref_code, ''), u.email::text, role_of(p.id), p.banned_until
   from profiles p join auth.users u on u.id = p.id
   where is_teacher()
   order by p.created_at desc
@@ -1259,6 +1286,141 @@ language sql stable security definer set search_path = public as $$
   select u.url from useful_link_urls u join useful_links l on l.id = u.link_id
   where l.id = p_id and (l.published or is_teacher()) and auth.uid() is not null;
 $$;
+
+-- ---------------------------------------------------------------------
+-- 13. Một thiết bị, mã giới thiệu, học thử 2 video đầu
+-- ---------------------------------------------------------------------
+-- Mỗi tài khoản chỉ một phiên đăng nhập: thiết bị đăng nhập sau thay thiết bị trước
+create table if not exists public.active_sessions (
+  user_id uuid primary key references profiles(id) on delete cascade,
+  session_id text not null,
+  device text,
+  claimed_at timestamptz not null default now()
+);
+alter table active_sessions enable row level security;   -- chỉ đọc/ghi qua hàm
+
+create or replace function public.claim_session(p_device text default null) returns void
+language plpgsql security definer set search_path = public as $$
+declare sid text := auth.jwt()->>'session_id';
+begin
+  if auth.uid() is null or sid is null then return; end if;
+  insert into active_sessions (user_id, session_id, device) values (auth.uid(), sid, left(p_device, 200))
+  on conflict (user_id) do update set session_id = excluded.session_id, device = excluded.device, claimed_at = now();
+end $$;
+
+-- Phiên hiện tại còn hợp lệ không (thầy dùng nhiều thiết bị được)
+create or replace function public.session_ok() returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare a active_sessions; sid text := auth.jwt()->>'session_id';
+begin
+  if auth.uid() is null or sid is null or is_teacher() then return true; end if;
+  select * into a from active_sessions where user_id = auth.uid();
+  if not found then return true; end if;
+  return a.session_id = sid;
+end $$;
+
+-- Học thử: 2 buổi đầu của khóa học và của 2 mục bài giảng, chỉ video, cần đăng nhập
+create or replace function public.preview_ok(p_type text, p_id bigint) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare f lesson_files; l lessons; d shop_docs; n int;
+begin
+  if auth.uid() is null then return false; end if;
+  if p_type = 'lesson_file' then
+    select * into f from lesson_files where id = p_id;
+    if not found or f.kind <> 'video' then return false; end if;
+    select * into l from lessons where id = f.lesson_id;
+    return l.n in (select x.n from lessons x where x.course_id = l.course_id order by x.n limit 2);
+  elsif p_type = 'shop_video' then
+    select s.* into d from shop_videos v join shop_docs s on s.id = v.doc_id where v.id = p_id;
+    if not found or not d.published then return false; end if;
+    if d.category not in ('Bài giảng lý thuyết và bài tập ứng dụng', 'Bài tập theo chương') then return false; end if;
+    n := (regexp_match(coalesce(d.tag, ''), '^Buổi ([0-9]+)$'))[1]::int;
+    return n is not null and n <= 2;
+  end if;
+  return false;
+end $$;
+
+-- Đơn hàng có mã giới thiệu
+alter table orders add column if not exists base_amount int;
+alter table orders add column if not exists ref_by uuid references profiles(id) on delete set null;
+alter table orders add column if not exists credit_used int not null default 0;
+
+drop function if exists public.create_order(text, bigint);
+create or replace function public.create_order(p_type text, p_item bigint default null, p_ref text default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare amt int; base int; c text; p profiles; rid uuid; credit int := 0; rc text := upper(trim(coalesce(p_ref, '')));
+begin
+  if auth.uid() is null then raise exception 'Cần đăng nhập'; end if;
+  select * into p from profiles where id = auth.uid();
+  if p_type in ('doc', 'doc_renew') then amt := doc_price(p_item);
+  elsif p_type = 'lesson' then select amount into amt from prices where key = 'lesson';
+  elsif p_type = 'student' and p.student_ever then
+    p_type := 'student_renew'; select amount into amt from prices where key = 'student_renew';
+  else select amount into amt from prices where key = p_type;
+  end if;
+  if amt is null then raise exception 'Không xác định được giá'; end if;
+  base := amt;
+  if rc <> '' then
+    rc := (regexp_match(rc, '([A-Z0-9]{6})$'))[1];   -- nhận cả "Tên_MÃ" hoặc chỉ "MÃ"
+    select id into rid from profiles where ref_code = rc;
+    if rid is null then raise exception 'Mã giới thiệu không đúng'; end if;
+    if rid = auth.uid() then raise exception 'Không dùng được mã giới thiệu của chính bạn'; end if;
+    if p_type not in ('doc', 'doc_renew', 'student', 'student_renew', 'lesson') then
+      raise exception 'Mã giới thiệu chỉ dùng khi mua tài liệu hoặc khóa học';
+    end if;
+  end if;
+  if p_type in ('doc', 'doc_renew') then
+    credit := least(greatest(coalesce(p.ref_credit, 0), 0), 50);
+    amt := round(amt * (100 - credit) / 100.0 * (case when rid is null then 1 else 0.95 end) / 1000) * 1000;
+  end if;
+  loop
+    c := 'HHTP' || lpad((floor(random() * 1000000))::text, 6, '0');
+    exit when not exists (select 1 from orders where code = c);
+  end loop;
+  insert into orders (code, user_id, item_type, item_id, amount, base_amount, ref_by, credit_used)
+  values (c, auth.uid(), p_type, p_item, amt, base, rid, credit);
+  return jsonb_build_object('code', c, 'amount', amt, 'type', p_type, 'base', base, 'credit', credit,
+    'ref', case when rid is null then null else rc end, 'ref_off', rid is not null and p_type in ('doc', 'doc_renew'));
+end $$;
+
+create or replace function public.fulfill_order(p_code text, p_amount int, p_bank_ref text) returns text
+language plpgsql security definer set search_path = public as $$
+declare o orders; base timestamptz; nc int;
+begin
+  select * into o from orders where code = p_code for update;
+  if not found then return 'not_found'; end if;
+  if o.status = 'paid' then return 'already_paid'; end if;
+  if p_amount < o.amount then return 'amount_too_low'; end if;
+  update orders set status = 'paid', paid_at = now(), bank_ref = p_bank_ref where id = o.id;
+  if o.item_type in ('doc', 'doc_renew') then
+    insert into doc_access (user_id, doc_id, expires_at) values (o.user_id, o.item_id, now() + interval '12 months')
+    on conflict (user_id, doc_id) do update set expires_at = greatest(doc_access.expires_at, now()) + interval '12 months';
+  elsif o.item_type in ('vip_month', 'vip_year') then
+    select greatest(coalesce(vip_until, now()), now()) into base from profiles where id = o.user_id;
+    update profiles set vip_until = base + case when o.item_type = 'vip_year' then interval '12 months' else interval '1 month' end where id = o.user_id;
+  elsif o.item_type in ('student', 'student_renew') then
+    select greatest(coalesce(student_until, now()), now()) into base from profiles where id = o.user_id;
+    update profiles set student_until = base + interval '12 months', student_ever = true,
+      student_from_lesson = case when o.item_type = 'student' and student_until is null then 1 else student_from_lesson end
+    where id = o.user_id;
+  elsif o.item_type = 'lesson' then
+    insert into lesson_purchases (user_id, lesson_id) values (o.user_id, o.item_id) on conflict do nothing;
+  end if;
+  -- Ưu đãi tích lũy đã dùng cho đơn này
+  if o.credit_used > 0 then
+    update profiles set ref_credit = greatest(ref_credit - o.credit_used, 0) where id = o.user_id;
+  end if;
+  -- Người giới thiệu được cộng 5% (tối đa 50%) cho tài liệu tiếp theo
+  if o.ref_by is not null and o.ref_by <> o.user_id then
+    update profiles set ref_credit = least(ref_credit + 5, 50) where id = o.ref_by returning ref_credit into nc;
+    insert into notifications (user_id, kind, title, body, link)
+    values (o.ref_by, 'ref', 'Bạn được cộng 5% ưu đãi nhờ mã giới thiệu',
+      'Ưu đãi hiện có: giảm ' || nc || '% cho tài liệu tiếp theo bạn mua.', 'member');
+  end if;
+  return 'ok';
+end $$;
+revoke execute on function public.fulfill_order(text, int, text) from public, anon, authenticated;
+grant execute on function public.fulfill_order(text, int, text) to service_role;
 
 -- ---------------------------------------------------------------------
 -- 8. Đặt thầy làm quản trị (chạy SAU khi thầy đã đăng nhập trang một lần):
