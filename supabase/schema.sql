@@ -517,7 +517,9 @@ begin
   st := doc_status(p_doc, uid);
   if st = 'expired' then return round(d.price * 0.5 / 1000) * 1000; end if;
   r := role_of(uid); p := d.price;
-  if r = 'student' then p := p * 0.5; elsif r = 'vip' then p := p * 0.85; end if;
+  -- Học viên mua cả khóa giảm 50%; học viên vào giữa khóa giảm 15% như VIP
+  if r = 'student' and student_drip_max(uid) is null then p := p * 0.5;
+  elsif r in ('student', 'vip') then p := p * 0.85; end if;
   return round(p / 1000) * 1000;
 end $$;
 
@@ -1382,7 +1384,8 @@ begin
   select * into p from profiles where id = auth.uid();
   if p_type in ('doc', 'doc_renew') then amt := doc_price(p_item);
   elsif p_type = 'lesson' then select amount into amt from prices where key = 'lesson';
-  elsif p_type = 'student' and p.student_ever then
+  elsif p_type = 'student' and p.student_ever and p.student_to_lesson is null then
+    -- người đã nghỉ giữa chừng đăng ký lại: tính giá gói mới, không được giá gia hạn
     p_type := 'student_renew'; select amount into amt from prices where key = 'student_renew';
   else select amount into amt from prices where key = p_type;
   end if;
