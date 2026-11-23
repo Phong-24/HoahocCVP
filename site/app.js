@@ -738,7 +738,7 @@
   function renderShop() {
     var bn = $("shopBanner"); bn.innerHTML = "";
     var rule = " Mỗi tài liệu mở được dùng 12 tháng; gia hạn bằng 50% giá gốc.";
-    if (st.role === "student") bn.appendChild(el("span", null, "Gói Học viên: mở miễn phí mục Bài giảng lý thuyết và bài tập ứng dụng, Bài tập theo chương" + (LIVE && st.win && st.win.from > 1 ? " từ buổi " + st.win.from + " (buổi bạn vào học); các buổi trước đó và các mục khác giảm 50% khi mua." : "; các mục khác giảm 50% khi mua.") + rule));
+    if (st.role === "student") bn.appendChild(el("span", null, "Gói Học viên: mở miễn phí mục Bài giảng lý thuyết và bài tập ứng dụng, Bài tập theo chương" + (LIVE && st.win && st.win.from > 1 ? " từ buổi " + st.win.from + " (buổi bạn vào học), mỗi tuần mở thêm 1 buổi: hiện mở đến buổi " + dripMax() + ", buổi " + (dripMax() + 1) + " mở ngày " + vnDate(dripDate(dripMax() + 1)) + ". Các buổi trước đó và các mục khác giảm 50% khi mua." : "; các mục khác giảm 50% khi mua.") + rule));
     else if (LIVE && st.win && st.win.kept) bn.appendChild(el("span", null, "Bạn đã nghỉ khóa từ buổi " + st.win.to + ": vẫn xem được tài liệu, video " + lessonRange(st.win.from, st.win.to - 1) + " đến " + vnDate(st.win.keepUntil) + ". Các buổi khác mua lẻ như thành viên." + rule));
     else if (st.role === "vip") bn.appendChild(el("span", null, "Gói VIP: giảm 15% khi mua tài liệu." + rule));
     else { bn.appendChild(el("span", null, "Mua lẻ từng tài liệu, dùng trong 12 tháng. VIP giảm 15%. Học viên mở miễn phí bài giảng và bài tập theo chương, các mục khác giảm 50%.")); var a = el("a", "btn sm ghost", "Xem các gói"); a.href = "#thanh-vien"; bn.appendChild(a); }
@@ -822,11 +822,15 @@
   /* Học thử: 2 buổi đầu của 2 mục bài giảng, chỉ video */
   function trialDoc(d) { var n = docLesson(d); return STUDENT_FREE.indexOf(d.cat) >= 0 && n != null && n >= 1 && n <= 2; }
   function docLesson(d) { var m = /^Buổi\s+(\d+)$/.exec(d.tag || ""); return m ? +m[1] : null; }
+  /* Vào giữa khóa: 2 mục bài giảng mở dần, mỗi tuần 1 buổi kể từ buổi được cấp; mua cả khóa thì mở hết */
+  function dripMax() { var w = st.win; if (!w || w.from <= 1) return null; return w.from + Math.floor((Date.now() - w.since.getTime()) / 604800000); }
+  function dripDate(n) { var w = st.win; return new Date(w.since.getTime() + (n - w.from) * 604800000); }
   function studentDocOpen(d) {
     if (STUDENT_FREE.indexOf(d.cat) < 0) return false;
     if (!LIVE) return st.role === "student";
-    var n = docLesson(d);
-    return n == null ? st.role === "student" : inWindow(n);
+    var n = docLesson(d), m = dripMax();
+    if (n == null) return st.role === "student" && m == null;
+    return inWindow(n) && (m == null || n <= m || st.win.extra.indexOf(n) >= 0);
   }
   function lessonOpen(n) {
     if (st.role === "teacher") return true;
@@ -1199,7 +1203,7 @@
       (COURSE.lessons || []).forEach(function (l) { if (bought.indexOf(l.id) >= 0) st.lessonBought[l.n] = true; });
       st.studentExpired = !!(prof.student_ever && st.role !== "student");
       var kept = st.role !== "student" && prof.student_to_lesson && prof.student_keep_until && new Date(prof.student_keep_until) > new Date();
-      st.win = st.role === "student" || kept ? { from: prof.student_from_lesson || 1, to: prof.student_to_lesson || null, extra: prof.student_extra_lessons || [], kept: !!kept, keepUntil: prof.student_keep_until, exp: prof.student_until } : null;
+      st.win = st.role === "student" || kept ? { from: prof.student_from_lesson || 1, since: prof.student_since ? new Date(prof.student_since) : new Date(), to: prof.student_to_lesson || null, extra: prof.student_extra_lessons || [], kept: !!kept, keepUntil: prof.student_keep_until, exp: prof.student_until } : null;
     });
   }
   function liveSession(session) {

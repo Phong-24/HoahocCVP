@@ -634,7 +634,9 @@ begin
   if c.used_by is not null then raise exception 'Mã đã được dùng'; end if;
   update activation_codes set used_by = auth.uid(), used_at = now() where code = c.code;
   update profiles set student_until = (c.expires_on + 1)::timestamptz, student_from_lesson = c.from_lesson,
-         student_extra_lessons = '{}', student_ever = true where id = auth.uid();
+         student_extra_lessons = '{}', student_ever = true,
+         student_since = case when student_until > now() and student_since is not null then student_since else now() end,
+         student_to_lesson = null, student_keep_until = null where id = auth.uid();
   insert into admin_log (target_id, action, data) values (auth.uid(), 'redeem_code', jsonb_build_object('code', c.code));
   return jsonb_build_object('from_lesson', c.from_lesson, 'expires_on', c.expires_on);
 end $$;
@@ -744,8 +746,12 @@ begin
     update profiles set vip_until = base + case when o.item_type = 'vip_year' then interval '12 months' else interval '1 month' end where id = o.user_id;
   elsif o.item_type in ('student', 'student_renew') then
     select greatest(coalesce(student_until, now()), now()) into base from profiles where id = o.user_id;
+    -- Mua gói qua web = mua cả khóa: mở từ buổi 1, không giới hạn (gia hạn sớm khi đang là học viên thì giữ nguyên)
     update profiles set student_until = base + interval '12 months', student_ever = true,
-      student_from_lesson = case when o.item_type = 'student' and student_until is null then 1 else student_from_lesson end
+      student_from_lesson = case when student_until > now() then student_from_lesson else 1 end,
+      student_extra_lessons = case when student_until > now() then student_extra_lessons else '{}' end,
+      student_since = case when student_until > now() and student_since is not null then student_since else now() end,
+      student_to_lesson = null, student_keep_until = null
     where id = o.user_id;
   elsif o.item_type = 'lesson' then
     insert into lesson_purchases (user_id, lesson_id) values (o.user_id, o.item_id) on conflict do nothing;
@@ -1055,6 +1061,20 @@ grant execute on function public.open_link(bigint) to anon, authenticated;
 -- ---------------------------------------------------------------------
 alter table profiles add column if not exists student_to_lesson int;          -- nghỉ từ buổi này (không tính)
 alter table profiles add column if not exists student_keep_until timestamptz; -- giữ quyền các buổi đã học đến ngày này
+-- Vào giữa khóa (từ buổi k > 1): ở 2 mục Bài giảng lý thuyết, Bài tập theo chương chỉ mở buổi k ngay,
+-- sau đó mỗi tuần mở thêm 1 buổi (tính từ ngày được cấp). Mua cả khóa (từ buổi 1): mở hết.
+alter table profiles add column if not exists student_since timestamptz;
+update profiles p set student_since = coalesce(
+  (select max(l.created_at) from admin_log l where l.target_id = p.id and l.action in ('grant_student', 'redeem_code')), now())
+where p.student_since is null and (p.student_until > now() or p.student_keep_until > now());
+
+-- Buổi cao nhất được mở ở 2 mục; null = không giới hạn
+create or replace function public.student_drip_max(uid uuid) returns int
+language sql stable security definer set search_path = public as $$
+  select case when coalesce(p.student_from_lesson, 1) <= 1 then null
+    else p.student_from_lesson + floor(extract(epoch from now() - coalesce(p.student_since, now())) / 604800)::int end
+  from profiles p where p.id = uid
+$$;
 
 create or replace function public.student_has_lesson(uid uuid, n int) returns boolean
 language plpgsql stable security definer set search_path = public as $$
@@ -1078,8 +1098,13 @@ begin
   if r = 'teacher' then return 'active'; end if;
   if d.category in ('Bài giảng lý thuyết và bài tập ứng dụng', 'Bài tập theo chương') then
     n := (regexp_match(coalesce(d.tag, ''), '^Buổi ([0-9]+)$'))[1]::int;
-    if n is null and r = 'student' then return 'student_free'; end if;
-    if n is not null and student_has_lesson(uid, n) then return 'student_free'; end if;
+    -- tài liệu không đánh số buổi: chỉ học viên mua cả khóa
+    if n is null and r = 'student' and student_drip_max(uid) is null then return 'student_free'; end if;
+    if n is not null and student_has_lesson(uid, n)
+       and (student_drip_max(uid) is null or n <= student_drip_max(uid)
+            or n = any (coalesce((select student_extra_lessons from profiles where id = uid), '{}'))) then
+      return 'student_free';
+    end if;
   end if;
   select * into a from doc_access where user_id = uid and doc_id = p_doc;
   if not found then return 'none'; end if;
@@ -1102,6 +1127,7 @@ begin
   if not is_teacher() then raise exception 'Chỉ thầy được cấp quyền'; end if;
   update profiles set student_until = (p_expires + 1)::timestamptz, student_from_lesson = p_from,
          student_extra_lessons = coalesce(p_extra, '{}'), student_ever = true,
+         student_since = case when student_until > now() and student_since is not null then student_since else now() end,
          student_to_lesson = null, student_keep_until = null where id = p_user;
   insert into admin_log (admin_id, target_id, action, data)
     values (auth.uid(), p_user, 'grant_student', jsonb_build_object('from', p_from, 'extra', p_extra, 'expires', p_expires, 'paid', p_paid, 'note', p_note));
@@ -1423,8 +1449,12 @@ begin
     update profiles set vip_until = base + case when o.item_type = 'vip_year' then interval '12 months' else interval '1 month' end where id = o.user_id;
   elsif o.item_type in ('student', 'student_renew') then
     select greatest(coalesce(student_until, now()), now()) into base from profiles where id = o.user_id;
+    -- Mua gói qua web = mua cả khóa: mở từ buổi 1, không giới hạn (gia hạn sớm khi đang là học viên thì giữ nguyên)
     update profiles set student_until = base + interval '12 months', student_ever = true,
-      student_from_lesson = case when o.item_type = 'student' and student_until is null then 1 else student_from_lesson end
+      student_from_lesson = case when student_until > now() then student_from_lesson else 1 end,
+      student_extra_lessons = case when student_until > now() then student_extra_lessons else '{}' end,
+      student_since = case when student_until > now() and student_since is not null then student_since else now() end,
+      student_to_lesson = null, student_keep_until = null
     where id = o.user_id;
   elsif o.item_type = 'lesson' then
     insert into lesson_purchases (user_id, lesson_id) values (o.user_id, o.item_id) on conflict do nothing;
